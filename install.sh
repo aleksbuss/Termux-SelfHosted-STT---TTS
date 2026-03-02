@@ -1,4 +1,5 @@
 #!/bin/bash
+
 echo "🚀 Начинаем установку локального ИИ-бота..."
 
 read -p "🔑 Введите токен вашего Telegram-бота (от @BotFather): " BOT_TOKEN
@@ -31,8 +32,7 @@ echo "🐍 Настраиваем Python..."
 pip install aiogram aiohttp --break-system-packages
 
 echo "🤖 Скачиваем логику бота..."
-
-curl -sSL https://raw.githubusercontent.com/aleksbuss/termux-voice-bot/main/main.py > main.py
+curl -sSL https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py > main.py
 
 echo "⚙️ Создаем конфигурацию..."
 cat <<EOF > .env
@@ -44,17 +44,19 @@ export PIPER_MODEL="$PROJECT_DIR/piper_tts/voice.onnx"
 EOF
 
 echo "🔄 Настраиваем автозапуск..."
-cat << 'EOF' > start_bot.sh
+cat << 'STARTEOF' > start_bot.sh
 #!/bin/bash
 cd ~/voice-bot
 source .env
 python main.py
-EOF
+STARTEOF
 chmod +x start_bot.sh
 
 if ! grep -q "voice-bot/start_bot.sh" ~/.bashrc; then
     echo "if ! pgrep -f 'python main.py' > /dev/null; then ~/voice-bot/start_bot.sh & fi" >> ~/.bashrc
 fi
 
+echo "=========================================="
 echo "✅ ГОТОВО! Бот установлен. Запускаем..."
+echo "=========================================="
 ~/voice-bot/start_bot.sh &
