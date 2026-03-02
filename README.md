@@ -33,4 +33,4 @@
 Откройте Termux на вашем Android-смартфоне, вставьте эту команду и нажмите Enter:
 
 ```bash
-curl -sSL https://github.com/aleksbuss/Termux-SelfHosted-STT---TTS/blob/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/install.sh | bash
