@@ -130,27 +130,28 @@ print_header "5. Установка Whisper (Голос → Текст)"
 WHISPER_DIR="$PROJECT_DIR/whisper.cpp"
 
 find_whisper_bin() {
-    # Ищем бинарник: новые версии = whisper-cli, старые = main
-    for name in whisper-cli main; do
-        if [ -f "$WHISPER_DIR/$name" ]; then
-            echo "$name"
-            return 0
-        fi
+    # Современный whisper.cpp кладёт бинарник в build/bin/
+    # Ищем рекурсивно по всей папке
+    for name in whisper-cli main whisper; do
+        for search_path in \
+            "$WHISPER_DIR/$name" \
+            "$WHISPER_DIR/build/bin/$name" \
+            "$WHISPER_DIR/build/$name"
+        do
+            if [ -f "$search_path" ] && [ -x "$search_path" ]; then
+                echo "$search_path"
+                return 0
+            fi
+        done
     done
-    # Последний шанс — ищем любой исполняемый файл в корне папки
-    local found
-    found=$(find "$WHISPER_DIR" -maxdepth 1 -type f -executable ! -name "*.sh" ! -name "*.py" 2>/dev/null | head -1)
-    if [ -n "$found" ]; then
-        basename "$found"
-        return 0
-    fi
-    return 1
+    # Последний шанс — find по всей папке
+    find "$WHISPER_DIR" -type f -executable -name "whisper*" 2>/dev/null | grep -v "\.sh$" | head -1
 }
 
 # Проверяем, есть ли уже готовая установка
 EXISTING_BIN=$(find_whisper_bin 2>/dev/null)
 if [ -n "$EXISTING_BIN" ] && [ -f "$WHISPER_DIR/models/ggml-base.bin" ]; then
-    print_ok "Whisper уже установлен (бинарник: $EXISTING_BIN)"
+    print_ok "Whisper уже установлен: $EXISTING_BIN"
 else
     [ ! -d "$WHISPER_DIR" ] && \
         run_check "git clone https://github.com/ggerganov/whisper.cpp.git" \
@@ -171,15 +172,17 @@ else
     cd "$PROJECT_DIR" || fatal_error "Не могу вернуться" "" "cd project"
 fi
 
-# Финально определяем бинарник
+# Финально определяем бинарник (возвращает полный путь)
 WHISPER_BIN_NAME=$(find_whisper_bin)
 if [ -z "$WHISPER_BIN_NAME" ]; then
+    echo "   Содержимое папки whisper.cpp/build:"
+    ls -la "$WHISPER_DIR/build/" 2>/dev/null | sed 's/^/   /' || echo "   (папки build нет)"
     echo "   Содержимое папки whisper.cpp:"
     ls -la "$WHISPER_DIR/" | sed 's/^/   /'
     fatal_error "Бинарник whisper не найден после компиляции!" \
         "Смотрите список файлов выше — возможно бинарник называется иначе" "Поиск бинарника"
 fi
-print_ok "Whisper готов (бинарник: $WHISPER_BIN_NAME)"
+print_ok "Whisper готов: $WHISPER_BIN_NAME"
 
 # --- ШАГ 6 ---
 print_header "6. Установка Piper (Текст → Голос)"
@@ -254,7 +257,7 @@ print_ok "Код бота загружен ($(wc -l < main.py) строк)"
 # --- ШАГ 9 ---
 print_header "9. Настройка конфигурации"
 
-WHISPER_BIN="$PROJECT_DIR/whisper.cpp/$WHISPER_BIN_NAME"
+WHISPER_BIN="$WHISPER_BIN_NAME"
 WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
 PIPER_BIN="$PROJECT_DIR/piper_tts/piper"
 PIPER_MODEL="$PROJECT_DIR/piper_tts/ru_RU-irina-medium.onnx"
