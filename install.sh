@@ -191,8 +191,16 @@ PIPER_DIR="$PROJECT_DIR/piper_tts"
 mkdir -p "$PIPER_DIR"
 cd "$PIPER_DIR" || fatal_error "Нет папки piper" "" "cd piper"
 
-if [ -f "$PIPER_DIR/piper" ] && [ -f "$PIPER_DIR/ru_RU-irina-medium.onnx" ]; then
-    print_ok "Piper уже установлен"
+find_piper_bin() {
+    find "$PIPER_DIR" -type f -executable -name "piper" 2>/dev/null \
+        | grep -v ".tar" | head -1
+}
+
+PIPER_VOICE="$PIPER_DIR/ru_RU-irina-medium.onnx"
+
+EXISTING_PIPER=$(find_piper_bin)
+if [ -n "$EXISTING_PIPER" ] && [ -f "$PIPER_VOICE" ]; then
+    print_ok "Piper уже установлен: $EXISTING_PIPER"
 else
     echo "   ⏳ Скачивание Piper (~50MB)..."
     run_check "wget --show-progress -O piper.tar.gz https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_arm64.tar.gz" \
@@ -201,17 +209,6 @@ else
 
     run_check "tar -xf piper.tar.gz" "Распаковка Piper" "Удалите piper.tar.gz и попробуйте снова" || \
         fatal_error "Ошибка распаковки" "Удалите piper.tar.gz" "tar"
-
-    # Ищем бинарник (структура архива может отличаться)
-    if [ -f "piper/piper" ]; then
-        cp piper/piper ./piper
-    elif [ ! -f "piper" ]; then
-        FOUND=$(find . -name "piper" -type f 2>/dev/null | grep -v ".tar" | head -1)
-        [ -n "$FOUND" ] && cp "$FOUND" ./piper || \
-            fatal_error "Бинарник piper не найден!" "ls -la $PIPER_DIR" "Поиск бинарника"
-    fi
-    chmod +x ./piper
-    print_ok "Piper бинарник готов"
 
     echo "   ⏳ Скачивание голоса Ирина (~60MB)..."
     run_check "wget --show-progress -O ru_RU-irina-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx" \
@@ -223,8 +220,16 @@ else
         fatal_error "Не удалось скачать конфиг" "Скачайте вручную" "wget config"
 
     cd "$PROJECT_DIR" || fatal_error "Не могу вернуться" "" "cd project"
-    print_ok "Piper установлен"
 fi
+
+# Определяем финальный путь к бинарнику
+FOUND_PIPER=$(find_piper_bin)
+if [ -z "$FOUND_PIPER" ]; then
+    echo "   Структура piper_tts:"
+    find "$PIPER_DIR" -maxdepth 4 | sed 's/^/   /'
+    fatal_error "Бинарник piper не найден!" "Смотрите структуру выше" "Поиск piper"
+fi
+print_ok "Piper готов: $FOUND_PIPER"
 
 # --- ШАГ 7 ---
 print_header "7. Python-библиотеки"
@@ -259,8 +264,8 @@ print_header "9. Настройка конфигурации"
 
 WHISPER_BIN="$WHISPER_BIN_NAME"
 WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
-PIPER_BIN="$PROJECT_DIR/piper_tts/piper"
-PIPER_MODEL="$PROJECT_DIR/piper_tts/ru_RU-irina-medium.onnx"
+PIPER_BIN="$FOUND_PIPER"
+PIPER_MODEL="$PIPER_DIR/ru_RU-irina-medium.onnx"
 
 [ -f "$WHISPER_MODEL" ] || fatal_error "Нет $WHISPER_MODEL" "Переустановите Whisper" "Пути"
 [ -f "$PIPER_BIN" ] || fatal_error "Нет $PIPER_BIN" "Переустановите Piper" "Пути"
