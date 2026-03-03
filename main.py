@@ -54,19 +54,27 @@ async def stt_whisper(audio_ogg_path: str) -> str:
 async def tts_piper(text: str, output_ogg_path: str):
     """Текст -> Голос (Piper)"""
     wav_path = output_ogg_path + ".wav"
+    # Piper нужны его .so библиотеки из той же папки
+    piper_dir = os.path.dirname(PIPER_BIN)
     try:
-        # Генерируем голос в WAV
-        # Экранируем одинарные кавычки в тексте
         safe_text = text.replace("'", "'\\''")
-        cmd = f"echo '{safe_text}' | {PIPER_BIN} -m {PIPER_MODEL} -f {wav_path}"
+        # Передаём LD_LIBRARY_PATH чтобы найти libonnxruntime.so
+        cmd = (
+            f"export LD_LIBRARY_PATH='{piper_dir}':$LD_LIBRARY_PATH; "
+            f"echo '{safe_text}' | '{PIPER_BIN}' --model '{PIPER_MODEL}' --output_file '{wav_path}'"
+        )
         proc = await asyncio.create_subprocess_shell(
             cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        await proc.wait()
+        stdout, stderr = await proc.communicate()
 
-        # Конвертируем WAV в OGG (формат голосовых Telegram)
+        if not os.path.exists(wav_path) or os.path.getsize(wav_path) == 0:
+            logging.error(f"Piper не создал WAV. stderr: {stderr.decode()}")
+            raise RuntimeError("Piper не сгенерировал аудио")
+
+        # Конвертируем WAV -> OGG opus (формат голосовых Telegram)
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-y", "-i", wav_path,
             "-c:a", "libopus", output_ogg_path,
@@ -106,11 +114,19 @@ async def handle_text(message: types.Message):
     msg = await message.answer("⏳ Генерирую голос (локально)...")
     with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
         tmp_path = tmp.name
-    await tts_piper(message.text, tmp_path)
-    await bot.send_voice(message.chat.id, types.FSInputFile(tmp_path))
-    await msg.delete()
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)
+    try:
+        await tts_piper(message.text, tmp_path)
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+            await bot.send_voice(message.chat.id, types.FSInputFile(tmp_path))
+            await msg.delete()
+        else:
+            await msg.edit_text("❌ Не удалось сгенерировать голос. Проверьте логи бота.")
+    except Exception as e:
+        logging.error(f"TTS error: {e}")
+        await msg.edit_text(f"❌ Ошибка генерации голоса:\n<code>{e}</code>", parse_mode="HTML")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 async def main():
