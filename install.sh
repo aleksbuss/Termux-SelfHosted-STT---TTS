@@ -1,115 +1,279 @@
 #!/bin/bash
-set -e
+# ============================================================
+# Termux Voice AI Bot — Installer v4.0
+# STT: whisper.cpp | TTS: espeak-ng | 100% local
+# ============================================================
+# No set -e: pkill/grep return non-zero legitimately.
+
 cd "$HOME" 2>/dev/null || cd /data/data/com.termux/files/home
 
-echo ""
-echo "=========================================="
-echo "  INSTALL VOICE AI BOT for Termux v2.0"
-echo "  STT: whisper.cpp (local)"
-echo "  TTS: espeak-ng (local, native Termux)"
-echo "  100% privacy - no cloud"
-echo "=========================================="
-echo ""
-
-echo -n "Enter your Telegram bot token (from @BotFather): "
-read BOT_TOKEN < /dev/tty
-if [ -z "$BOT_TOKEN" ]; then
-    echo "ERROR: Token is empty. Exit."
-    exit 1
-fi
-
-echo ""
-echo "Step 1/5: Installing system dependencies..."
-pkg update -y && pkg upgrade -y
-pkg install -y python ffmpeg git wget curl clang make cmake espeak
-
 PROJECT_DIR="$HOME/voice-bot"
-mkdir -p "$PROJECT_DIR"
-cd "$PROJECT_DIR"
+BOT_PGREP="voice-bot/venv.*main\.py"
+
+ok()   { echo "[OK] $1"; }
+fail() { echo "[ERROR] $1"; exit 1; }
+warn() { echo "[WARN] $1"; }
 
 echo ""
-echo "Step 2/5: Building Whisper (Voice to Text)..."
-if [ ! -d "whisper.cpp" ]; then
-    git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
-fi
-cd whisper.cpp
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release -j$(nproc)
-cd ../..
+echo "=========================================="
+echo "  VOICE AI BOT for Termux v4.0"
+echo "  STT: whisper.cpp | TTS: espeak-ng"
+echo "  100% local — zero cloud"
+echo "=========================================="
 
-echo "Downloading Whisper base model (~142 MB)..."
-mkdir -p whisper.cpp/models
-if [ ! -f "whisper.cpp/models/ggml-base.bin" ]; then
-    wget -O whisper.cpp/models/ggml-base.bin \
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
-fi
-echo "Whisper ready!"
+# Kill OUR bot only (match full path pattern, not any python main.py)
+pkill -f "$BOT_PGREP" 2>/dev/null || true
+sleep 1
 
+# ── Token input ──
 echo ""
-echo "Step 3/5: TTS via espeak-ng (native for Termux)..."
-if command -v espeak > /dev/null 2>&1; then
-    echo "espeak-ng installed and working!"
+echo -n "Telegram bot token (from @BotFather): "
+if [ -t 0 ]; then
+    read BOT_TOKEN
 else
-    echo "ERROR: espeak not found. Try: pkg install espeak"
-    exit 1
+    read BOT_TOKEN < /dev/tty 2>/dev/null || true
 fi
 
-echo ""
-echo "Step 4/5: Installing Python dependencies..."
-echo "  (aiogram + aiohttp may compile for 5-10 min on phone)"
-python -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install aiogram aiohttp
-deactivate
-echo "Python dependencies installed!"
-
-echo ""
-echo "Step 5/5: Downloading bot code..."
-curl -sSL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py
-
-if [ ! -s main.py ]; then
-    echo "ERROR: Failed to download main.py"
-    exit 1
+if [ -z "$BOT_TOKEN" ]; then
+    echo ""
+    fail "Could not read token. Run instead:
+  curl -sL https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/install.sh -o install.sh && bash install.sh"
 fi
 
+echo "$BOT_TOKEN" | grep -qE '^[0-9]+:[A-Za-z0-9_-]+$' || fail "Invalid token format"
+ok "Token accepted"
+
+# ══════════════════════════════════
+# Step 1: System packages
+# ══════════════════════════════════
+echo ""
+echo "-- Step 1/5: System packages --"
+
+# Separate update and upgrade — upgrade can return non-zero on minor issues
+pkg update -y || warn "pkg update had warnings"
+pkg upgrade -y || warn "pkg upgrade had warnings"
+pkg install -y python ffmpeg git wget curl clang make cmake espeak || fail "pkg install failed"
+
+for bin in python ffmpeg git cmake espeak; do
+    command -v "$bin" > /dev/null 2>&1 || fail "$bin not found after install"
+done
+ok "System packages ready"
+
+# ══════════════════════════════════
+# Step 2: Whisper.cpp
+# ══════════════════════════════════
+echo ""
+echo "-- Step 2/5: Whisper.cpp (STT) --"
+
+mkdir -p "$PROJECT_DIR"
+cd "$PROJECT_DIR" || fail "Cannot cd to $PROJECT_DIR"
+
+WHISPER_BIN="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
+
+if [ -f "$WHISPER_BIN" ]; then
+    ok "whisper-cli already built, skipping"
+else
+    if [ ! -d "whisper.cpp" ]; then
+        git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git || fail "git clone failed"
+    fi
+
+    cd whisper.cpp
+    rm -rf build
+    mkdir -p build
+    cd build || fail "Cannot cd to build dir"
+
+    JOBS=$(nproc 2>/dev/null || echo 2)
+    cmake .. -DCMAKE_BUILD_TYPE=Release || fail "cmake configure failed"
+    cmake --build . --config Release -j"$JOBS" || fail "cmake build failed"
+    cd "$PROJECT_DIR" || fail "Cannot cd back to project"
+
+    # Fallback: binary might be at different path depending on version
+    if [ ! -f "$WHISPER_BIN" ]; then
+        ALT=$(find whisper.cpp/build \( -name "whisper-cli" -o -name "main" \) -type f -executable 2>/dev/null | head -1)
+        if [ -n "$ALT" ]; then
+            WHISPER_BIN="$PROJECT_DIR/$ALT"
+            warn "Binary at non-standard path: $ALT"
+        else
+            fail "Build succeeded but binary not found"
+        fi
+    fi
+    ok "whisper-cli built"
+fi
+
+# Download model
+WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
+mkdir -p "$(dirname "$WHISPER_MODEL")"
+
+if [ -f "$WHISPER_MODEL" ]; then
+    ok "Whisper model exists, skipping download"
+else
+    echo "Downloading Whisper base model (~142 MB)..."
+    wget -O "$WHISPER_MODEL" \
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" \
+        || fail "Model download failed"
+
+    # Verify file size (trim whitespace from wc output)
+    SIZE=$(wc -c < "$WHISPER_MODEL" 2>/dev/null | tr -d ' ')
+    SIZE=${SIZE:-0}
+    if [ "$SIZE" -lt 1000000 ] 2>/dev/null; then
+        rm -f "$WHISPER_MODEL"
+        fail "Model file too small (${SIZE} bytes) — download corrupted"
+    fi
+    ok "Whisper model downloaded"
+fi
+
+# ══════════════════════════════════
+# Step 3: espeak-ng
+# ══════════════════════════════════
+echo ""
+echo "-- Step 3/5: espeak-ng (TTS) --"
+command -v espeak > /dev/null 2>&1 || fail "espeak not found"
+ok "espeak-ng ready"
+
+# ══════════════════════════════════
+# Step 4: Python deps
+# ══════════════════════════════════
+echo ""
+echo "-- Step 4/5: Python dependencies --"
+
+cd "$PROJECT_DIR" || fail "Cannot cd to $PROJECT_DIR"
+
+# If venv exists but is broken (python upgraded), recreate it
+if [ -d "venv" ]; then
+    if [ -f "venv/bin/python" ] && venv/bin/python -c "pass" 2>/dev/null; then
+        source venv/bin/activate
+        if python -c "import aiogram; import aiohttp" 2>/dev/null; then
+            ok "Already installed, skipping"
+            deactivate
+        else
+            warn "Packages missing, installing..."
+            pip install --upgrade pip
+            pip install aiogram aiohttp || fail "pip install failed"
+            deactivate
+        fi
+    else
+        warn "venv is broken (Python upgraded?), recreating..."
+        rm -rf venv
+        python -m venv venv || fail "venv creation failed"
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install aiogram aiohttp || fail "pip install failed"
+        deactivate
+    fi
+else
+    echo "(C extensions compile from source — may take 5-10 min on phone)"
+    python -m venv venv || fail "venv creation failed"
+    source venv/bin/activate
+    pip install --upgrade pip
+    pip install aiogram aiohttp || fail "pip install failed"
+    deactivate
+fi
+ok "Python dependencies ready"
+
+# ══════════════════════════════════
+# Step 5: Bot code + config
+# ══════════════════════════════════
+echo ""
+echo "-- Step 5/5: Bot code + config --"
+
+cd "$PROJECT_DIR" || fail "Cannot cd to $PROJECT_DIR"
+
+# Download to temp first, only overwrite on success
+curl -sSL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py.tmp
+if [ ! -s main.py.tmp ]; then
+    rm -f main.py.tmp
+    fail "Failed to download main.py"
+fi
+mv main.py.tmp main.py
+ok "Bot code downloaded"
+
+# .env — restricted permissions (contains token)
 cat > .env << ENVEOF
 export TELEGRAM_BOT_TOKEN="$BOT_TOKEN"
-export WHISPER_BIN="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
-export WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
-export TTS_ENGINE="espeak"
+export WHISPER_BIN="$WHISPER_BIN"
+export WHISPER_MODEL="$WHISPER_MODEL"
 export ESPEAK_VOICE="ru"
 ENVEOF
+chmod 600 .env
 
+# ── start_bot.sh ──
+# Uses unique grep pattern so pkill only kills OUR bot
 cat > start_bot.sh << 'STARTEOF'
 #!/bin/bash
-cd ~/voice-bot
+BOT_DIR=~/voice-bot
+pkill -f "voice-bot/venv.*main\.py" 2>/dev/null || true
+sleep 1
+cd "$BOT_DIR" || exit 1
 source .env
 source venv/bin/activate
-python main.py
+exec python main.py
 STARTEOF
 chmod +x start_bot.sh
 
+# ── stop_bot.sh ──
 cat > stop_bot.sh << 'STOPEOF'
 #!/bin/bash
-pkill -f "python main.py" 2>/dev/null && echo "Bot stopped" || echo "Bot not running"
+if pkill -f "voice-bot/venv.*main\.py" 2>/dev/null; then
+    echo "Bot stopped"
+else
+    echo "Bot was not running"
+fi
 STOPEOF
 chmod +x stop_bot.sh
 
-if ! grep -q "voice-bot/start_bot.sh" ~/.bashrc 2>/dev/null; then
-    echo '# Auto-start voice bot' >> ~/.bashrc
-    echo 'if ! pgrep -f "python main.py" > /dev/null 2>&1; then ~/voice-bot/start_bot.sh & fi' >> ~/.bashrc
-fi
+# ── restart_bot.sh ──
+cat > restart_bot.sh << 'RESTARTEOF'
+#!/bin/bash
+~/voice-bot/stop_bot.sh
+sleep 2
+nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
+disown
+echo "Bot restarted. Logs: tail -f ~/voice-bot/bot.log"
+RESTARTEOF
+chmod +x restart_bot.sh
 
+ok "Scripts created"
+
+# ── Autostart (clean ALL old entries, add fresh) ──
+# Use temp file to avoid sed -i portability issues
+if [ -f ~/.bashrc ]; then
+    grep -v 'voice-bot' ~/.bashrc > ~/.bashrc.tmp 2>/dev/null || true
+    mv ~/.bashrc.tmp ~/.bashrc
+fi
+cat >> ~/.bashrc << 'BASHEOF'
+# voice-bot-autostart-v4
+if [ -f ~/voice-bot/start_bot.sh ] && ! pgrep -f "voice-bot/venv.*main\.py" > /dev/null 2>&1; then
+    echo "Starting Voice Bot..."
+    nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
+    disown
+fi
+BASHEOF
+ok "Autostart configured"
+
+# ══════════════════════════════════
+# Launch
+# ══════════════════════════════════
 echo ""
 echo "=========================================="
 echo "  INSTALLATION COMPLETE!"
-echo "  Start: ~/voice-bot/start_bot.sh"
-echo "  Stop:  ~/voice-bot/stop_bot.sh"
-echo "  STT:   whisper-cli (local)"
-echo "  TTS:   espeak-ng (local)"
 echo "=========================================="
 echo ""
-echo "Starting bot..."
-~/voice-bot/start_bot.sh &
+echo "  Start:   ~/voice-bot/start_bot.sh"
+echo "  Stop:    ~/voice-bot/stop_bot.sh"
+echo "  Restart: ~/voice-bot/restart_bot.sh"
+echo "  Logs:    tail -f ~/voice-bot/bot.log"
+echo ""
+echo "  Voice message -> text (whisper.cpp)"
+echo "  Text message   -> voice (espeak-ng)"
+echo "=========================================="
+echo ""
+
+nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
+disown
+sleep 2
+
+if pgrep -f "voice-bot/venv.*main\.py" > /dev/null 2>&1; then
+    ok "Bot is running! Send a voice message to your bot."
+else
+    warn "Bot may not have started. Check: tail ~/voice-bot/bot.log"
+fi
