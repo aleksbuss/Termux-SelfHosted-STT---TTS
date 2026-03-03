@@ -129,9 +129,28 @@ print_header "5. Установка Whisper (Голос → Текст)"
 
 WHISPER_DIR="$PROJECT_DIR/whisper.cpp"
 
-if [ -f "$WHISPER_DIR/models/ggml-base.bin" ] && \
-   ( [ -f "$WHISPER_DIR/main" ] || [ -f "$WHISPER_DIR/whisper-cli" ] ); then
-    print_ok "Whisper уже установлен"
+find_whisper_bin() {
+    # Ищем бинарник: новые версии = whisper-cli, старые = main
+    for name in whisper-cli main; do
+        if [ -f "$WHISPER_DIR/$name" ]; then
+            echo "$name"
+            return 0
+        fi
+    done
+    # Последний шанс — ищем любой исполняемый файл в корне папки
+    local found
+    found=$(find "$WHISPER_DIR" -maxdepth 1 -type f -executable ! -name "*.sh" ! -name "*.py" 2>/dev/null | head -1)
+    if [ -n "$found" ]; then
+        basename "$found"
+        return 0
+    fi
+    return 1
+}
+
+# Проверяем, есть ли уже готовая установка
+EXISTING_BIN=$(find_whisper_bin 2>/dev/null)
+if [ -n "$EXISTING_BIN" ] && [ -f "$WHISPER_DIR/models/ggml-base.bin" ]; then
+    print_ok "Whisper уже установлен (бинарник: $EXISTING_BIN)"
 else
     [ ! -d "$WHISPER_DIR" ] && \
         run_check "git clone https://github.com/ggerganov/whisper.cpp.git" \
@@ -150,18 +169,17 @@ else
         fatal_error "Не удалось скачать модель" "df -h" "download model"
 
     cd "$PROJECT_DIR" || fatal_error "Не могу вернуться" "" "cd project"
-    print_ok "Whisper установлен"
 fi
 
-# Ищем бинарник (новые версии: whisper-cli, старые: main)
-if [ -f "$WHISPER_DIR/whisper-cli" ]; then
-    WHISPER_BIN_NAME="whisper-cli"
-elif [ -f "$WHISPER_DIR/main" ]; then
-    WHISPER_BIN_NAME="main"
-else
-    fatal_error "Бинарник whisper не найден!" "Удалите whisper.cpp и запустите снова" "Проверка"
+# Финально определяем бинарник
+WHISPER_BIN_NAME=$(find_whisper_bin)
+if [ -z "$WHISPER_BIN_NAME" ]; then
+    echo "   Содержимое папки whisper.cpp:"
+    ls -la "$WHISPER_DIR/" | sed 's/^/   /'
+    fatal_error "Бинарник whisper не найден после компиляции!" \
+        "Смотрите список файлов выше — возможно бинарник называется иначе" "Поиск бинарника"
 fi
-print_ok "Бинарник whisper: $WHISPER_BIN_NAME"
+print_ok "Whisper готов (бинарник: $WHISPER_BIN_NAME)"
 
 # --- ШАГ 6 ---
 print_header "6. Установка Piper (Текст → Голос)"
