@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+cd "$HOME" 2>/dev/null || cd /data/data/com.termux/files/home
 
 echo ""
 echo "=========================================="
@@ -10,7 +11,8 @@ echo "  100% privacy - no cloud"
 echo "=========================================="
 echo ""
 
-read -p "Enter your Telegram bot token (from @BotFather): " BOT_TOKEN
+echo -n "Enter your Telegram bot token (from @BotFather): "
+read BOT_TOKEN < /dev/tty
 if [ -z "$BOT_TOKEN" ]; then
     echo "ERROR: Token is empty. Exit."
     exit 1
