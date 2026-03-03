@@ -2,28 +2,38 @@ import os
 import asyncio
 import logging
 import tempfile
+import wave
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 
 # --- НАСТРОЙКИ ---
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-WHISPER_BIN = os.environ.get("WHISPER_BIN", "")
+TOKEN         = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+WHISPER_BIN   = os.environ.get("WHISPER_BIN", "")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "")
-PIPER_BIN = os.environ.get("PIPER_BIN", "")
-PIPER_MODEL = os.environ.get("PIPER_MODEL", "")
+PIPER_MODEL   = os.environ.get("PIPER_MODEL", "")
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp  = Dispatcher()
+
+# Piper загружается один раз при старте
+_piper_voice = None
+
+def get_piper_voice():
+    global _piper_voice
+    if _piper_voice is None:
+        from piper.voice import PiperVoice
+        logging.info(f"Загружаю Piper: {PIPER_MODEL}")
+        _piper_voice = PiperVoice.load(PIPER_MODEL)
+        logging.info("Piper готов")
+    return _piper_voice
 
 
-# --- ФУНКЦИИ ---
+# --- STT: Голос -> Текст ---
 async def stt_whisper(audio_ogg_path: str) -> str:
-    """Голос -> Текст (Whisper)"""
     wav_path = audio_ogg_path + ".wav"
     txt_path = wav_path + ".txt"
     try:
-        # Конвертируем OGG в WAV 16kHz
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-y", "-i", audio_ogg_path,
             "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav_path,
@@ -32,7 +42,6 @@ async def stt_whisper(audio_ogg_path: str) -> str:
         )
         await proc.wait()
 
-        # Распознаем текст
         proc = await asyncio.create_subprocess_exec(
             WHISPER_BIN, "-m", WHISPER_MODEL, "-f", wav_path,
             "-l", "ru", "--no-timestamps", "-t", "4", "--output-txt",
@@ -51,30 +60,21 @@ async def stt_whisper(audio_ogg_path: str) -> str:
                 os.remove(p)
 
 
+# --- TTS: Текст -> Голос (через Python piper-tts, без бинарника) ---
 async def tts_piper(text: str, output_ogg_path: str):
-    """Текст -> Голос (Piper)"""
     wav_path = output_ogg_path + ".wav"
-    # Piper нужны его .so библиотеки из той же папки
-    piper_dir = os.path.dirname(PIPER_BIN)
     try:
-        safe_text = text.replace("'", "'\\''")
-        # Передаём LD_LIBRARY_PATH чтобы найти libonnxruntime.so
-        cmd = (
-            f"export LD_LIBRARY_PATH='{piper_dir}':$LD_LIBRARY_PATH; "
-            f"echo '{safe_text}' | '{PIPER_BIN}' --model '{PIPER_MODEL}' --output_file '{wav_path}'"
-        )
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await proc.communicate()
+        def synthesize():
+            voice = get_piper_voice()
+            with wave.open(wav_path, "w") as wav_file:
+                voice.synthesize(text, wav_file)
+
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, synthesize)
 
         if not os.path.exists(wav_path) or os.path.getsize(wav_path) == 0:
-            logging.error(f"Piper не создал WAV. stderr: {stderr.decode()}")
             raise RuntimeError("Piper не сгенерировал аудио")
 
-        # Конвертируем WAV -> OGG opus (формат голосовых Telegram)
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-y", "-i", wav_path,
             "-c:a", "libopus", output_ogg_path,
@@ -82,6 +82,9 @@ async def tts_piper(text: str, output_ogg_path: str):
             stderr=asyncio.subprocess.DEVNULL
         )
         await proc.wait()
+
+        if not os.path.exists(output_ogg_path) or os.path.getsize(output_ogg_path) == 0:
+            raise RuntimeError("ffmpeg не создал OGG")
     finally:
         if os.path.exists(wav_path):
             os.remove(wav_path)
@@ -116,14 +119,11 @@ async def handle_text(message: types.Message):
         tmp_path = tmp.name
     try:
         await tts_piper(message.text, tmp_path)
-        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-            await bot.send_voice(message.chat.id, types.FSInputFile(tmp_path))
-            await msg.delete()
-        else:
-            await msg.edit_text("❌ Не удалось сгенерировать голос. Проверьте логи бота.")
+        await bot.send_voice(message.chat.id, types.FSInputFile(tmp_path))
+        await msg.delete()
     except Exception as e:
         logging.error(f"TTS error: {e}")
-        await msg.edit_text(f"❌ Ошибка генерации голоса:\n<code>{e}</code>", parse_mode="HTML")
+        await msg.edit_text(f"❌ Ошибка TTS: {e}")
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -131,6 +131,12 @@ async def handle_text(message: types.Message):
 
 async def main():
     print("✅ БОТ ЗАПУЩЕН И ГОТОВ К РАБОТЕ!")
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, get_piper_voice)
+        print("✅ Piper модель загружена")
+    except Exception as e:
+        print(f"⚠️ Ошибка загрузки Piper: {e}")
     await dp.start_polling(bot)
 
 
