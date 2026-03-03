@@ -185,64 +185,45 @@ fi
 print_ok "Whisper готов: $WHISPER_BIN_NAME"
 
 # --- ШАГ 6 ---
-print_header "6. Установка Piper (Текст → Голос)"
+print_header "6. Голосовая модель Piper (Ирина)"
 
+# Prebuilt бинарник Piper не работает на Android (несовместимый ELF).
+# Используем piper-tts как Python-пакет — он работает нативно.
 PIPER_DIR="$PROJECT_DIR/piper_tts"
 mkdir -p "$PIPER_DIR"
-cd "$PIPER_DIR" || fatal_error "Нет папки piper" "" "cd piper"
 
-find_piper_bin() {
-    find "$PIPER_DIR" -type f -executable -name "piper" 2>/dev/null \
-        | grep -v ".tar" | head -1
-}
+PIPER_MODEL_FILE="$PIPER_DIR/ru_RU-irina-medium.onnx"
+VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
+CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json"
 
-PIPER_VOICE="$PIPER_DIR/ru_RU-irina-medium.onnx"
-
-EXISTING_PIPER=$(find_piper_bin)
-if [ -n "$EXISTING_PIPER" ] && [ -f "$PIPER_VOICE" ]; then
-    print_ok "Piper уже установлен: $EXISTING_PIPER"
+if [ -f "$PIPER_MODEL_FILE" ] && [ -f "${PIPER_MODEL_FILE}.json" ]; then
+    print_ok "Голосовая модель уже скачана"
 else
-    echo "   ⏳ Скачивание Piper (~50MB)..."
-    run_check "wget --show-progress -O piper.tar.gz https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_arm64.tar.gz" \
-        "Скачивание Piper" "Проверьте интернет" || \
-        fatal_error "Не удалось скачать Piper" "github.com/rhasspy/piper/releases" "wget piper"
-
-    run_check "tar -xf piper.tar.gz" "Распаковка Piper" "Удалите piper.tar.gz и попробуйте снова" || \
-        fatal_error "Ошибка распаковки" "Удалите piper.tar.gz" "tar"
-
-    echo "   ⏳ Скачивание голоса Ирина (~60MB)..."
-    run_check "wget --show-progress -O ru_RU-irina-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx" \
+    echo "   ⏳ Скачивание голоса 'Ирина' (~60MB)..."
+    run_check "wget --show-progress -O '$PIPER_MODEL_FILE' '$VOICE_URL'" \
         "Скачивание голоса" "Проверьте интернет" || \
-        fatal_error "Не удалось скачать голос" "Скачайте вручную с HuggingFace" "wget voice"
+        fatal_error "Не удалось скачать голос" "Проверьте интернет" "wget voice"
 
-    run_check "wget --show-progress -O ru_RU-irina-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json" \
+    run_check "wget --show-progress -O '${PIPER_MODEL_FILE}.json' '$CONFIG_URL'" \
         "Скачивание конфига голоса" "Без конфига голос не заработает" || \
-        fatal_error "Не удалось скачать конфиг" "Скачайте вручную" "wget config"
-
-    cd "$PROJECT_DIR" || fatal_error "Не могу вернуться" "" "cd project"
+        fatal_error "Не удалось скачать конфиг" "Проверьте интернет" "wget config"
 fi
 
-# Определяем финальный путь к бинарнику
-FOUND_PIPER=$(find_piper_bin)
-if [ -z "$FOUND_PIPER" ]; then
-    echo "   Структура piper_tts:"
-    find "$PIPER_DIR" -maxdepth 4 | sed 's/^/   /'
-    fatal_error "Бинарник piper не найден!" "Смотрите структуру выше" "Поиск piper"
-fi
-print_ok "Piper готов: $FOUND_PIPER"
+print_ok "Голос 'Ирина': $PIPER_MODEL_FILE"
 
 # --- ШАГ 7 ---
 print_header "7. Python-библиотеки"
 
-run_check "pip install aiogram aiohttp --break-system-packages" \
-    "Установка aiogram и aiohttp" "pip install aiogram aiohttp" || \
-    run_check "pip install aiogram aiohttp" \
-        "Установка (попытка 2)" "python --version" || \
+echo "   Устанавливаем: aiogram, aiohttp, piper-tts..."
+run_check "pip install aiogram aiohttp piper-tts --break-system-packages" \
+    "Установка пакетов" "pip install aiogram aiohttp piper-tts" || \
+    run_check "pip install aiogram aiohttp piper-tts" \
+        "Установка пакетов (попытка 2)" "python --version" || \
     fatal_error "Не удалось установить библиотеки" "pip install --upgrade pip" "pip install"
 
-python -c "import aiogram; import aiohttp" 2>/dev/null || \
-    fatal_error "Библиотеки не импортируются" "python -m pip install aiogram aiohttp" "import check"
-print_ok "Python-библиотеки готовы"
+python -c "import aiogram; import aiohttp; from piper.voice import PiperVoice" 2>/dev/null || \
+    fatal_error "Библиотеки не импортируются" "pip install aiogram aiohttp piper-tts" "import check"
+print_ok "Python-библиотеки готовы (aiogram + aiohttp + piper-tts)"
 
 # --- ШАГ 8 ---
 print_header "8. Загрузка кода бота"
@@ -264,18 +245,15 @@ print_header "9. Настройка конфигурации"
 
 WHISPER_BIN="$WHISPER_BIN_NAME"
 WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
-PIPER_BIN="$FOUND_PIPER"
-PIPER_MODEL="$PIPER_DIR/ru_RU-irina-medium.onnx"
+PIPER_MODEL="$PIPER_MODEL_FILE"
 
 [ -f "$WHISPER_MODEL" ] || fatal_error "Нет $WHISPER_MODEL" "Переустановите Whisper" "Пути"
-[ -f "$PIPER_BIN" ] || fatal_error "Нет $PIPER_BIN" "Переустановите Piper" "Пути"
-[ -f "$PIPER_MODEL" ] || fatal_error "Нет $PIPER_MODEL" "Переустановите Piper" "Пути"
+[ -f "$PIPER_MODEL" ]   || fatal_error "Нет $PIPER_MODEL" "Повторите шаг 6" "Пути"
 
 cat > .env << EOF
 export TELEGRAM_BOT_TOKEN="$BOT_TOKEN"
 export WHISPER_BIN="$WHISPER_BIN"
 export WHISPER_MODEL="$WHISPER_MODEL"
-export PIPER_BIN="$PIPER_BIN"
 export PIPER_MODEL="$PIPER_MODEL"
 EOF
 
@@ -304,7 +282,7 @@ print_header "11. Финальная проверка"
 ALL_OK=true
 [ -f "$WHISPER_BIN" ] && echo -e "   ${GREEN}✓${NC} Whisper" || { echo -e "   ${RED}✗${NC} Whisper"; ALL_OK=false; }
 [ -f "$WHISPER_MODEL" ] && echo -e "   ${GREEN}✓${NC} Whisper модель" || { echo -e "   ${RED}✗${NC} Whisper модель"; ALL_OK=false; }
-[ -f "$PIPER_BIN" ] && echo -e "   ${GREEN}✓${NC} Piper" || { echo -e "   ${RED}✗${NC} Piper"; ALL_OK=false; }
+python -c "from piper.voice import PiperVoice" 2>/dev/null && echo -e "   ${GREEN}✓${NC} piper-tts" || { echo -e "   ${RED}✗${NC} piper-tts"; ALL_OK=false; }
 [ -f "$PIPER_MODEL" ] && echo -e "   ${GREEN}✓${NC} Piper модель" || { echo -e "   ${RED}✗${NC} Piper модель"; ALL_OK=false; }
 [ -f "$PROJECT_DIR/main.py" ] && echo -e "   ${GREEN}✓${NC} Код бота" || { echo -e "   ${RED}✗${NC} Код бота"; ALL_OK=false; }
 [ -f "$PROJECT_DIR/.env" ] && echo -e "   ${GREEN}✓${NC} Конфиг" || { echo -e "   ${RED}✗${NC} Конфиг"; ALL_OK=false; }
