@@ -1,317 +1,113 @@
 #!/bin/bash
+set -e
 
-# ==========================================
-#  Termux Voice AI Bot - Установщик
-# ==========================================
+echo ""
+echo "=========================================="
+echo "  INSTALL VOICE AI BOT for Termux v2.0"
+echo "  STT: whisper.cpp (local)"
+echo "  TTS: espeak-ng (local, native Termux)"
+echo "  100% privacy - no cloud"
+echo "=========================================="
+echo ""
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-ERRORS=0
-
-# ИСПРАВЛЕНИЕ: В Termux нет /tmp, используем $TMPDIR
-LOG_FILE="${TMPDIR}/install_log.txt"
-
-print_header() { echo ""; echo "=========================================="; echo -e "${BLUE}$1${NC}"; echo "=========================================="; }
-print_ok()     { echo -e "${GREEN}✅ $1${NC}"; }
-print_warn()   { echo -e "${YELLOW}⚠️  $1${NC}"; }
-print_error()  { echo -e "${RED}❌ $1${NC}"; ((ERRORS++)); }
-
-fatal_error() {
-    echo ""
-    print_error "$1"
-    echo ""
-    echo -e "${YELLOW}💡 Что делать:${NC} $2"
-    echo -e "${YELLOW}📍 Шаг:${NC} $3"
-    echo ""
-    echo "Откройте Issue: https://github.com/aleksbuss/Termux-SelfHosted-STT---TTS/issues"
+read -p "Enter your Telegram bot token (from @BotFather): " BOT_TOKEN
+if [ -z "$BOT_TOKEN" ]; then
+    echo "ERROR: Token is empty. Exit."
     exit 1
-}
+fi
 
-run_check() {
-    local cmd="$1"
-    local step_name="$2"
-    local fix_hint="$3"
-    echo "   Выполняю: $step_name..."
-    eval "$cmd" > "${LOG_FILE}" 2>&1
-    if [ $? -eq 0 ]; then
-        print_ok "$step_name"
-        return 0
-    else
-        print_error "$step_name"
-        echo "   Лог ошибки:"
-        cat "${LOG_FILE}" | sed 's/^/   > /'
-        echo -e "${YELLOW}   💡 $fix_hint${NC}"
-        return 1
-    fi
-}
-
-check_internet() {
-    echo "   Проверка интернет-соединения..."
-    if ping -c 1 google.com > /dev/null 2>&1; then
-        print_ok "Интернет есть"
-    else
-        fatal_error "Нет подключения к интернету" "Проверьте Wi-Fi" "Проверка сети"
-    fi
-}
-
-# ==========================================
-clear
-print_header "🚀 Установка Termux Voice AI Bot"
 echo ""
-echo "  🎙  Whisper.cpp (распознавание речи)"
-echo "  🔊  Piper TTS (синтез речи)"
-echo "  🤖  Telegram-бот"
-echo ""
-echo -e "${YELLOW}⚠️  Нужно ~300MB и 5-10 минут${NC}"
-echo ""
-
-# --- ШАГ 0 ---
-print_header "0. Проверка окружения"
-
-[ ! -d "/data/data/com.termux" ] && fatal_error "Только для Termux!" "Установите из F-Droid" "Проверка Termux"
-print_ok "Termux обнаружен"
-
-ARCH=$(uname -m)
-[[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]] && print_ok "Архитектура aarch64" || print_warn "Архитектура $ARCH"
-
-check_internet
-
-# --- ШАГ 1 ---
-print_header "1. Настройка бота"
-
-echo "🔑 Введите токен вашего Telegram-бота (от @BotFather):"
-read -r BOT_TOKEN < /dev/tty
-BOT_TOKEN=$(echo "$BOT_TOKEN" | tr -d '[:space:]')
-
-[ -z "$BOT_TOKEN" ] && fatal_error "Токен пустой!" "Получите у @BotFather" "Ввод токена"
-print_ok "Токен принят"
-
-# --- ШАГ 2 ---
-print_header "2. Обновление системы"
-
-run_check "pkg update -y" "Обновление пакетов" "Попробуйте: pkg update" || \
-    fatal_error "Не удалось обновить пакеты" "Попробуйте: termux-change-repo" "pkg update"
-
-run_check "pkg upgrade -y" "Обновление системы" "Попробуйте: pkg upgrade" || \
-    print_warn "Некоторые пакеты не обновились (не критично)"
-
-# --- ШАГ 3 ---
-print_header "3. Установка зависимостей"
-
-run_check "pkg install -y python ffmpeg git wget curl clang make cmake" \
-    "Установка пакетов" "Попробуйте по одному: pkg install python" || \
-    fatal_error "Не удалось установить зависимости" "pkg install python ffmpeg..." "pkg install"
-
-command -v python &> /dev/null || fatal_error "Python не установился" "pkg install python" "Проверка Python"
-print_ok "Python $(python --version 2>&1 | cut -d' ' -f2)"
-
-# --- ШАГ 4 ---
-print_header "4. Создание проекта"
+echo "Step 1/5: Installing system dependencies..."
+pkg update -y && pkg upgrade -y
+pkg install -y python ffmpeg git wget curl clang make cmake espeak
 
 PROJECT_DIR="$HOME/voice-bot"
-
-if [ -d "$PROJECT_DIR" ]; then
-    print_warn "Папка уже существует. Удалить и пересоздать? (y/n)"
-    read -r choice < /dev/tty
-    [[ "$choice" == "y" || "$choice" == "Y" ]] && rm -rf "$PROJECT_DIR"
-fi
-
 mkdir -p "$PROJECT_DIR"
-cd "$PROJECT_DIR" || fatal_error "Не могу зайти в папку" "" "Переход"
-print_ok "Папка: $PROJECT_DIR"
+cd "$PROJECT_DIR"
 
-# --- ШАГ 5 ---
-print_header "5. Установка Whisper (Голос → Текст)"
+echo ""
+echo "Step 2/5: Building Whisper (Voice to Text)..."
+if [ ! -d "whisper.cpp" ]; then
+    git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git
+fi
+cd whisper.cpp
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release -j$(nproc)
+cd ../..
 
-WHISPER_DIR="$PROJECT_DIR/whisper.cpp"
+echo "Downloading Whisper base model (~142 MB)..."
+mkdir -p whisper.cpp/models
+if [ ! -f "whisper.cpp/models/ggml-base.bin" ]; then
+    wget -O whisper.cpp/models/ggml-base.bin \
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+fi
+echo "Whisper ready!"
 
-find_whisper_bin() {
-    # Современный whisper.cpp кладёт бинарник в build/bin/
-    # Ищем рекурсивно по всей папке
-    for name in whisper-cli main whisper; do
-        for search_path in \
-            "$WHISPER_DIR/$name" \
-            "$WHISPER_DIR/build/bin/$name" \
-            "$WHISPER_DIR/build/$name"
-        do
-            if [ -f "$search_path" ] && [ -x "$search_path" ]; then
-                echo "$search_path"
-                return 0
-            fi
-        done
-    done
-    # Последний шанс — find по всей папке
-    find "$WHISPER_DIR" -type f -executable -name "whisper*" 2>/dev/null | grep -v "\.sh$" | head -1
-}
-
-# Проверяем, есть ли уже готовая установка
-EXISTING_BIN=$(find_whisper_bin 2>/dev/null)
-if [ -n "$EXISTING_BIN" ] && [ -f "$WHISPER_DIR/models/ggml-base.bin" ]; then
-    print_ok "Whisper уже установлен: $EXISTING_BIN"
+echo ""
+echo "Step 3/5: TTS via espeak-ng (native for Termux)..."
+if command -v espeak > /dev/null 2>&1; then
+    echo "espeak-ng installed and working!"
 else
-    [ ! -d "$WHISPER_DIR" ] && \
-        run_check "git clone https://github.com/ggerganov/whisper.cpp.git" \
-            "Скачивание Whisper" "Проверьте интернет" || \
-        fatal_error "Не удалось скачать Whisper" "git clone вручную" "git clone"
-
-    cd "$WHISPER_DIR" || fatal_error "Нет папки whisper" "" "cd whisper"
-
-    echo "   ⏳ Компиляция (2-5 минут)..."
-    run_check "make" "Компиляция Whisper" "Закройте другие приложения" || \
-        fatal_error "Ошибка компиляции" "make clean && make" "make"
-
-    echo "   ⏳ Скачивание модели (~150MB)..."
-    run_check "bash ./models/download-ggml-model.sh base" \
-        "Скачивание модели" "Проверьте место: df -h" || \
-        fatal_error "Не удалось скачать модель" "df -h" "download model"
-
-    cd "$PROJECT_DIR" || fatal_error "Не могу вернуться" "" "cd project"
+    echo "ERROR: espeak not found. Try: pkg install espeak"
+    exit 1
 fi
 
-# Финально определяем бинарник (возвращает полный путь)
-WHISPER_BIN_NAME=$(find_whisper_bin)
-if [ -z "$WHISPER_BIN_NAME" ]; then
-    echo "   Содержимое папки whisper.cpp/build:"
-    ls -la "$WHISPER_DIR/build/" 2>/dev/null | sed 's/^/   /' || echo "   (папки build нет)"
-    echo "   Содержимое папки whisper.cpp:"
-    ls -la "$WHISPER_DIR/" | sed 's/^/   /'
-    fatal_error "Бинарник whisper не найден после компиляции!" \
-        "Смотрите список файлов выше — возможно бинарник называется иначе" "Поиск бинарника"
-fi
-print_ok "Whisper готов: $WHISPER_BIN_NAME"
+echo ""
+echo "Step 4/5: Installing Python dependencies..."
+echo "  (aiogram + aiohttp may compile for 5-10 min on phone)"
+python -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install aiogram aiohttp
+deactivate
+echo "Python dependencies installed!"
 
-# --- ШАГ 6 ---
-print_header "6. Голосовая модель Piper (Ирина)"
+echo ""
+echo "Step 5/5: Downloading bot code..."
+curl -sSL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py
 
-# Prebuilt бинарник Piper не работает на Android (несовместимый ELF).
-# Используем piper-tts как Python-пакет — он работает нативно.
-PIPER_DIR="$PROJECT_DIR/piper_tts"
-mkdir -p "$PIPER_DIR"
-
-PIPER_MODEL_FILE="$PIPER_DIR/ru_RU-irina-medium.onnx"
-VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
-CONFIG_URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json"
-
-if [ -f "$PIPER_MODEL_FILE" ] && [ -f "${PIPER_MODEL_FILE}.json" ]; then
-    print_ok "Голосовая модель уже скачана"
-else
-    echo "   ⏳ Скачивание голоса 'Ирина' (~60MB)..."
-    run_check "wget --show-progress -O '$PIPER_MODEL_FILE' '$VOICE_URL'" \
-        "Скачивание голоса" "Проверьте интернет" || \
-        fatal_error "Не удалось скачать голос" "Проверьте интернет" "wget voice"
-
-    run_check "wget --show-progress -O '${PIPER_MODEL_FILE}.json' '$CONFIG_URL'" \
-        "Скачивание конфига голоса" "Без конфига голос не заработает" || \
-        fatal_error "Не удалось скачать конфиг" "Проверьте интернет" "wget config"
+if [ ! -s main.py ]; then
+    echo "ERROR: Failed to download main.py"
+    exit 1
 fi
 
-print_ok "Голос 'Ирина': $PIPER_MODEL_FILE"
-
-# --- ШАГ 7 ---
-print_header "7. Python-библиотеки"
-
-echo "   Устанавливаем: aiogram, aiohttp, piper-tts..."
-run_check "pip install aiogram aiohttp piper-tts --break-system-packages" \
-    "Установка пакетов" "pip install aiogram aiohttp piper-tts" || \
-    run_check "pip install aiogram aiohttp piper-tts" \
-        "Установка пакетов (попытка 2)" "python --version" || \
-    fatal_error "Не удалось установить библиотеки" "pip install --upgrade pip" "pip install"
-
-python -c "import aiogram; import aiohttp; from piper.voice import PiperVoice" 2>/dev/null || \
-    fatal_error "Библиотеки не импортируются" "pip install aiogram aiohttp piper-tts" "import check"
-print_ok "Python-библиотеки готовы (aiogram + aiohttp + piper-tts)"
-
-# --- ШАГ 8 ---
-print_header "8. Загрузка кода бота"
-
-MAIN_URL="https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py"
-
-run_check "curl -sSL $MAIN_URL -o main.py" "Скачивание main.py" "Проверьте: $MAIN_URL" || \
-    fatal_error "Не удалось скачать main.py" "Проверьте репозиторий" "curl main.py"
-
-[ ! -s "main.py" ] && fatal_error "main.py пустой!" "$MAIN_URL" "Проверка файла"
-
-head -1 main.py | grep -q "<!DOCTYPE\|<html" && \
-    { rm main.py; fatal_error "Скачался HTML (404)" "Проверьте URL в репозитории" "Проверка содержимого"; }
-
-print_ok "Код бота загружен ($(wc -l < main.py) строк)"
-
-# --- ШАГ 9 ---
-print_header "9. Настройка конфигурации"
-
-WHISPER_BIN="$WHISPER_BIN_NAME"
-WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
-PIPER_MODEL="$PIPER_MODEL_FILE"
-
-[ -f "$WHISPER_MODEL" ] || fatal_error "Нет $WHISPER_MODEL" "Переустановите Whisper" "Пути"
-[ -f "$PIPER_MODEL" ]   || fatal_error "Нет $PIPER_MODEL" "Повторите шаг 6" "Пути"
-
-cat > .env << EOF
+cat > .env << ENVEOF
 export TELEGRAM_BOT_TOKEN="$BOT_TOKEN"
-export WHISPER_BIN="$WHISPER_BIN"
-export WHISPER_MODEL="$WHISPER_MODEL"
-export PIPER_MODEL="$PIPER_MODEL"
-EOF
-
-print_ok "Конфигурация сохранена"
-
-# --- ШАГ 10 ---
-print_header "10. Автозапуск"
+export WHISPER_BIN="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
+export WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
+export TTS_ENGINE="espeak"
+export ESPEAK_VOICE="ru"
+ENVEOF
 
 cat > start_bot.sh << 'STARTEOF'
 #!/bin/bash
-cd ~/voice-bot || exit 1
+cd ~/voice-bot
 source .env
-exec python main.py
+source venv/bin/activate
+python main.py
 STARTEOF
-
 chmod +x start_bot.sh
-print_ok "Скрипт запуска создан"
 
-grep -q "voice-bot/start_bot.sh" ~/.bashrc || \
-    echo 'if ! pgrep -f "python main.py" > /dev/null; then ~/voice-bot/start_bot.sh & fi' >> ~/.bashrc
-print_ok "Автозапуск настроен"
+cat > stop_bot.sh << 'STOPEOF'
+#!/bin/bash
+pkill -f "python main.py" 2>/dev/null && echo "Bot stopped" || echo "Bot not running"
+STOPEOF
+chmod +x stop_bot.sh
 
-# --- ШАГ 11 ---
-print_header "11. Финальная проверка"
-
-ALL_OK=true
-[ -f "$WHISPER_BIN" ] && echo -e "   ${GREEN}✓${NC} Whisper" || { echo -e "   ${RED}✗${NC} Whisper"; ALL_OK=false; }
-[ -f "$WHISPER_MODEL" ] && echo -e "   ${GREEN}✓${NC} Whisper модель" || { echo -e "   ${RED}✗${NC} Whisper модель"; ALL_OK=false; }
-python -c "from piper.voice import PiperVoice" 2>/dev/null && echo -e "   ${GREEN}✓${NC} piper-tts" || { echo -e "   ${RED}✗${NC} piper-tts"; ALL_OK=false; }
-[ -f "$PIPER_MODEL" ] && echo -e "   ${GREEN}✓${NC} Piper модель" || { echo -e "   ${RED}✗${NC} Piper модель"; ALL_OK=false; }
-[ -f "$PROJECT_DIR/main.py" ] && echo -e "   ${GREEN}✓${NC} Код бота" || { echo -e "   ${RED}✗${NC} Код бота"; ALL_OK=false; }
-[ -f "$PROJECT_DIR/.env" ] && echo -e "   ${GREEN}✓${NC} Конфиг" || { echo -e "   ${RED}✗${NC} Конфиг"; ALL_OK=false; }
-
-[ "$ALL_OK" = false ] && fatal_error "Не все компоненты готовы!" "Проверьте ошибки выше" "Финальная проверка"
-
-# --- ЗАПУСК ---
-print_header "🎉 Установка завершена!"
-
-~/voice-bot/start_bot.sh &
-sleep 2
-
-if pgrep -f "python main.py" > /dev/null; then
-    print_ok "Бот запущен!"
-    echo ""
-    echo "📝 Что делать:"
-    echo "   Откройте Telegram → найдите бота → /start"
-    echo "   Голосовое → текст | Текст → голосовое"
-    echo ""
-    echo "🔧 Команды:"
-    echo "   Логи:   cd ~/voice-bot && source .env && python main.py"
-    echo "   Стоп:   pkill -f 'python main.py'"
-    echo "   Старт:  ~/voice-bot/start_bot.sh &"
-else
-    print_warn "Запустите вручную:"
-    echo "   cd ~/voice-bot && source .env && python main.py"
+if ! grep -q "voice-bot/start_bot.sh" ~/.bashrc 2>/dev/null; then
+    echo '# Auto-start voice bot' >> ~/.bashrc
+    echo 'if ! pgrep -f "python main.py" > /dev/null 2>&1; then ~/voice-bot/start_bot.sh & fi' >> ~/.bashrc
 fi
 
 echo ""
-echo -e "${BLUE}=========================================="
-echo "Установка завершена! Ошибок: $ERRORS"
-echo -e "==========================================${NC}"
+echo "=========================================="
+echo "  INSTALLATION COMPLETE!"
+echo "  Start: ~/voice-bot/start_bot.sh"
+echo "  Stop:  ~/voice-bot/stop_bot.sh"
+echo "  STT:   whisper-cli (local)"
+echo "  TTS:   espeak-ng (local)"
+echo "=========================================="
+echo ""
+echo "Starting bot..."
+~/voice-bot/start_bot.sh &
