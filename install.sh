@@ -129,7 +129,8 @@ print_header "5. Установка Whisper (Голос → Текст)"
 
 WHISPER_DIR="$PROJECT_DIR/whisper.cpp"
 
-if [ -f "$WHISPER_DIR/main" ] && [ -f "$WHISPER_DIR/models/ggml-base.bin" ]; then
+if [ -f "$WHISPER_DIR/models/ggml-base.bin" ] && \
+   ( [ -f "$WHISPER_DIR/main" ] || [ -f "$WHISPER_DIR/whisper-cli" ] ); then
     print_ok "Whisper уже установлен"
 else
     [ ! -d "$WHISPER_DIR" ] && \
@@ -152,7 +153,15 @@ else
     print_ok "Whisper установлен"
 fi
 
-[ -f "$WHISPER_DIR/main" ] || fatal_error "Бинарник whisper не найден!" "Удалите whisper.cpp и запустите снова" "Проверка"
+# Ищем бинарник (новые версии: whisper-cli, старые: main)
+if [ -f "$WHISPER_DIR/whisper-cli" ]; then
+    WHISPER_BIN_NAME="whisper-cli"
+elif [ -f "$WHISPER_DIR/main" ]; then
+    WHISPER_BIN_NAME="main"
+else
+    fatal_error "Бинарник whisper не найден!" "Удалите whisper.cpp и запустите снова" "Проверка"
+fi
+print_ok "Бинарник whisper: $WHISPER_BIN_NAME"
 
 # --- ШАГ 6 ---
 print_header "6. Установка Piper (Текст → Голос)"
@@ -227,12 +236,11 @@ print_ok "Код бота загружен ($(wc -l < main.py) строк)"
 # --- ШАГ 9 ---
 print_header "9. Настройка конфигурации"
 
-WHISPER_BIN="$PROJECT_DIR/whisper.cpp/main"
+WHISPER_BIN="$PROJECT_DIR/whisper.cpp/$WHISPER_BIN_NAME"
 WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
 PIPER_BIN="$PROJECT_DIR/piper_tts/piper"
 PIPER_MODEL="$PROJECT_DIR/piper_tts/ru_RU-irina-medium.onnx"
 
-[ -f "$WHISPER_BIN" ] || fatal_error "Нет $WHISPER_BIN" "Переустановите Whisper" "Пути"
 [ -f "$WHISPER_MODEL" ] || fatal_error "Нет $WHISPER_MODEL" "Переустановите Whisper" "Пути"
 [ -f "$PIPER_BIN" ] || fatal_error "Нет $PIPER_BIN" "Переустановите Piper" "Пути"
 [ -f "$PIPER_MODEL" ] || fatal_error "Нет $PIPER_MODEL" "Переустановите Piper" "Пути"
