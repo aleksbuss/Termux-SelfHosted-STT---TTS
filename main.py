@@ -66,6 +66,30 @@ if errors:
 
 os.makedirs(TEMP_DIR, exist_ok=True)
 
+# ── PID file for reliable stop/start ──
+PID_FILE = os.path.join(os.path.expanduser("~"), "voice-bot", "bot.pid")
+
+
+def write_pid():
+    """Write current PID to file."""
+    try:
+        with open(PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+    except OSError as e:
+        log.warning(f"Could not write PID file: {e}")
+
+
+def remove_pid():
+    """Remove PID file on exit."""
+    try:
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+    except OSError:
+        pass
+
+
+write_pid()
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -337,6 +361,7 @@ async def on_shutdown():
     _shutdown_done = True
 
     log.info("Shutting down...")
+    remove_pid()
     try:
         await bot.session.close()
     except Exception:
