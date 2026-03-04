@@ -147,6 +147,7 @@ if [ -d "venv" ]; then
             deactivate
         else
             warn "Packages missing, installing..."
+            export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
             pip install --upgrade pip
             pip install aiogram aiohttp || fail "pip install failed"
             deactivate
@@ -156,6 +157,7 @@ if [ -d "venv" ]; then
         rm -rf venv
         python -m venv venv || fail "venv creation failed"
         source venv/bin/activate
+        export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
         pip install --upgrade pip
         pip install aiogram aiohttp || fail "pip install failed"
         deactivate
@@ -164,6 +166,8 @@ else
     echo "(C extensions compile from source — may take 5-10 min on phone)"
     python -m venv venv || fail "venv creation failed"
     source venv/bin/activate
+    # Required for Rust-based packages (pydantic-core) on Android/Termux
+    export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
     pip install --upgrade pip
     pip install aiogram aiohttp || fail "pip install failed"
     deactivate
