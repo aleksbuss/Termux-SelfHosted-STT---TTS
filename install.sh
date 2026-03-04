@@ -8,7 +8,6 @@
 cd "$HOME" 2>/dev/null || cd /data/data/com.termux/files/home
 
 PROJECT_DIR="$HOME/voice-bot"
-BOT_PGREP="voice-bot/venv.*main\.py"
 
 ok()   { echo "[OK] $1"; }
 fail() { echo "[ERROR] $1"; exit 1; }
@@ -21,9 +20,10 @@ echo "  STT: whisper.cpp | TTS: espeak-ng"
 echo "  100% local — zero cloud"
 echo "=========================================="
 
-# Kill OUR bot only (match full path pattern, not any python main.py)
-pkill -f "$BOT_PGREP" 2>/dev/null || true
-sleep 1
+# Kill ALL possible bot instances (broad pattern for install — catches old versions too)
+pkill -f "main\.py" 2>/dev/null || true
+pkill -f "voice-bot" 2>/dev/null || true
+sleep 2
 
 # ── Token input ──
 echo ""
@@ -138,9 +138,9 @@ echo "-- Step 4/5: Python dependencies --"
 
 cd "$PROJECT_DIR" || fail "Cannot cd to $PROJECT_DIR"
 
-# If venv exists but is broken (python upgraded), recreate it
+# If venv exists but is broken (python/pip upgraded), recreate it
 if [ -d "venv" ]; then
-    if [ -f "venv/bin/python" ] && venv/bin/python -c "pass" 2>/dev/null; then
+    if [ -f "venv/bin/python" ] && venv/bin/python -c "import pip" 2>/dev/null; then
         source venv/bin/activate
         if python -c "import aiogram; import aiohttp" 2>/dev/null; then
             ok "Already installed, skipping"
@@ -197,12 +197,26 @@ ENVEOF
 chmod 600 .env
 
 # ── start_bot.sh ──
-# Uses unique grep pattern so pkill only kills OUR bot
 cat > start_bot.sh << 'STARTEOF'
 #!/bin/bash
 BOT_DIR=~/voice-bot
-pkill -f "voice-bot/venv.*main\.py" 2>/dev/null || true
-sleep 1
+PID_FILE="$BOT_DIR/bot.pid"
+
+# Kill existing bot via PID file (reliable)
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        kill "$OLD_PID" 2>/dev/null
+        sleep 1
+        kill -9 "$OLD_PID" 2>/dev/null
+    fi
+    rm -f "$PID_FILE"
+fi
+
+# Fallback: kill by name (catches strays)
+pkill -f "main\.py" 2>/dev/null || true
+sleep 2
+
 cd "$BOT_DIR" || exit 1
 source .env
 source venv/bin/activate
@@ -213,7 +227,25 @@ chmod +x start_bot.sh
 # ── stop_bot.sh ──
 cat > stop_bot.sh << 'STOPEOF'
 #!/bin/bash
-if pkill -f "voice-bot/venv.*main\.py" 2>/dev/null; then
+PID_FILE=~/voice-bot/bot.pid
+KILLED=0
+
+# Try PID file first
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+        kill "$PID" 2>/dev/null
+        sleep 1
+        kill -9 "$PID" 2>/dev/null
+        KILLED=1
+    fi
+    rm -f "$PID_FILE"
+fi
+
+# Fallback: kill by name
+pkill -f "main\.py" 2>/dev/null && KILLED=1
+
+if [ "$KILLED" -eq 1 ]; then
     echo "Bot stopped"
 else
     echo "Bot was not running"
@@ -225,7 +257,7 @@ chmod +x stop_bot.sh
 cat > restart_bot.sh << 'RESTARTEOF'
 #!/bin/bash
 ~/voice-bot/stop_bot.sh
-sleep 2
+sleep 3
 nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
 disown
 echo "Bot restarted. Logs: tail -f ~/voice-bot/bot.log"
@@ -242,7 +274,7 @@ if [ -f ~/.bashrc ]; then
 fi
 cat >> ~/.bashrc << 'BASHEOF'
 # voice-bot-autostart-v4
-if [ -f ~/voice-bot/start_bot.sh ] && ! pgrep -f "voice-bot/venv.*main\.py" > /dev/null 2>&1; then
+if [ -f ~/voice-bot/start_bot.sh ] && ! pgrep -f "voice-bot.*main\.py" > /dev/null 2>&1; then
     echo "Starting Voice Bot..."
     nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
     disown
@@ -270,9 +302,9 @@ echo ""
 
 nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
 disown
-sleep 2
+sleep 3
 
-if pgrep -f "voice-bot/venv.*main\.py" > /dev/null 2>&1; then
+if pgrep -f "voice-bot.*main\.py" > /dev/null 2>&1; then
     ok "Bot is running! Send a voice message to your bot."
 else
     warn "Bot may not have started. Check: tail ~/voice-bot/bot.log"
