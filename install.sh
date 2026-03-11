@@ -52,7 +52,6 @@ cd "$PROJECT_DIR"
 mkdir -p piper/models
 if [ ! -f "piper/piper" ]; then
     echo "Downloading Piper engine (ARM64)..."
-    # ИСПРАВЛЕНА ССЫЛКА НА АКТУАЛЬНУЮ ВЕРСИЮ И ДОБАВЛЕН ФЛАГ -f ДЛЯ БЕЗОПАСНОСТИ
     curl -sSfL "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz" -o piper.tar.gz || fail "Piper download failed"
     tar -xf piper.tar.gz || fail "Piper extraction failed"
     rm -f piper.tar.gz
@@ -62,7 +61,7 @@ BASE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main"
 MODELS=(
     "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
     "en/en_US/lessac/medium/en_US-lessac-medium.onnx"
-    "es/es_ES/sharada/medium/es_ES-sharada-medium.onnx"
+    "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx"
 )
 
 for model_path in "${MODELS[@]}"; do
