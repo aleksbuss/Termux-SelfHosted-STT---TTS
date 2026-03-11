@@ -33,10 +33,11 @@ TEMP_DIR = os.path.join(tempfile.gettempdir(), "voice-bot")
 DB_PATH = os.path.expanduser("~/voice-bot/users.db")
 
 # ── Multilingual Models Config ──
+# ИСПРАВЛЕНА ИСПАНСКАЯ МОДЕЛЬ НА davefx
 LANG_CONFIG = {
     "ru": {"whisper": "ru", "piper": "ru_RU-irina-medium.onnx", "n2w": "ru", "icon": "🇷🇺", "name": "Русский"},
     "en": {"whisper": "en", "piper": "en_US-lessac-medium.onnx", "n2w": "en", "icon": "🇬🇧", "name": "English"},
-    "es": {"whisper": "es", "piper": "es_ES-sharada-medium.onnx", "n2w": "es", "icon": "🇪🇸", "name": "Español"}
+    "es": {"whisper": "es", "piper": "es_ES-davefx-medium.onnx", "n2w": "es", "icon": "🇪🇸", "name": "Español"}
 }
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
