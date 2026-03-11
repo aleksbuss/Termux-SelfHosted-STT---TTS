@@ -29,7 +29,6 @@ ok "Token accepted"
 
 echo "-- Step 1: System packages --"
 pkg update -y; pkg upgrade -y
-# Добавлен ca-certificates для решения проблемы с SSL при скачивании
 pkg install -y ca-certificates python ffmpeg git curl clang make cmake tar gzip sqlite || fail "pkg install failed"
 
 echo "-- Step 2: Whisper STT (Multi-Lang Base) --"
@@ -45,8 +44,7 @@ fi
 
 if [ ! -f "whisper.cpp/models/ggml-base.bin" ]; then
     echo "Downloading Whisper model (~142 MB)..."
-    # Заменили wget на curl
-    curl -sSL "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" -o "whisper.cpp/models/ggml-base.bin" || fail "Whisper model download failed"
+    curl -sSfL "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" -o "whisper.cpp/models/ggml-base.bin" || fail "Whisper model download failed"
 fi
 
 echo "-- Step 3: Piper TTS (3 Premium Models) --"
@@ -54,13 +52,12 @@ cd "$PROJECT_DIR"
 mkdir -p piper/models
 if [ ! -f "piper/piper" ]; then
     echo "Downloading Piper engine (ARM64)..."
-    # ИСПРАВЛЕНИЕ: Используем curl -sSL вместо wget
-    curl -sSL "https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_aarch64.tar.gz" -o piper.tar.gz || fail "Piper download failed"
+    # ИСПРАВЛЕНА ССЫЛКА НА АКТУАЛЬНУЮ ВЕРСИЮ И ДОБАВЛЕН ФЛАГ -f ДЛЯ БЕЗОПАСНОСТИ
+    curl -sSfL "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz" -o piper.tar.gz || fail "Piper download failed"
     tar -xf piper.tar.gz || fail "Piper extraction failed"
-    rm piper.tar.gz
+    rm -f piper.tar.gz
 fi
 
-# Скачивание 3-х языков через надежный curl
 BASE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main"
 MODELS=(
     "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
@@ -72,8 +69,8 @@ for model_path in "${MODELS[@]}"; do
     FILE_NAME=$(basename "$model_path")
     if [ ! -f "piper/models/$FILE_NAME" ]; then
         echo "Downloading voice model: $FILE_NAME ..."
-        curl -sSL "$BASE_URL/$model_path" -o "piper/models/$FILE_NAME" || fail "Failed to download $FILE_NAME"
-        curl -sSL "$BASE_URL/${model_path}.json" -o "piper/models/${FILE_NAME}.json" || fail "Failed to download JSON for $FILE_NAME"
+        curl -sSfL "$BASE_URL/$model_path" -o "piper/models/$FILE_NAME" || fail "Failed to download $FILE_NAME"
+        curl -sSfL "$BASE_URL/${model_path}.json" -o "piper/models/${FILE_NAME}.json" || fail "Failed to download JSON for $FILE_NAME"
     fi
 done
 ok "Piper TTS ready"
@@ -89,7 +86,7 @@ deactivate
 
 echo "-- Step 5: Finalizing --"
 echo "Downloading main.py from repository..."
-curl -sSL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py
+curl -sSfL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py || fail "Failed to download main.py"
 
 cat > .env << ENVEOF
 export TELEGRAM_BOT_TOKEN="$BOT_TOKEN"
