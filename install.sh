@@ -1,175 +1,133 @@
 #!/bin/bash
 # ============================================================
-# Termux Voice AI Bot — Installer v7.1 (Hotfix Piper Download)
+# Termux Voice AI Bot — Installer v7.0 (Ultimate Android Fix)
+# STT: Whisper | TTS: Piper (RU, EN, ES) | 100% Offline
 # ============================================================
-
-set -e
 
 cd "$HOME" 2>/dev/null || cd /data/data/com.termux/files/home
 PROJECT_DIR="$HOME/voice-bot"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-ok()   { echo -e "${GREEN}[OK]${NC} $1"; }
-fail() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-info() { echo -e "[INFO] $1"; }
+ok()   { echo "[OK] $1"; }
+fail() { echo "[ERROR] $1"; exit 1; }
+warn() { echo "[WARN] $1"; }
 
 echo "=========================================="
-echo "  VOICE AI BOT v7.1 (Piper Fix)"
+echo "  VOICE AI BOT v7.0 (Multi-Lang Premium)"
+echo "  Architecture Fix: Android Bionic -> Glibc"
 echo "=========================================="
 
-pkill -f "main.py" 2>/dev/null || true
+pkill -f "main\.py" 2>/dev/null || true
 sleep 1
 
-echo -n "Telegram bot token: "
-read -r BOT_TOKEN < /dev/tty 2>/dev/null || read -r BOT_TOKEN
+# Чтение токена
+echo -n "Telegram bot token (from @BotFather): "
+read BOT_TOKEN < /dev/tty 2>/dev/null || read BOT_TOKEN
 
-[ -z "$BOT_TOKEN" ] && fail "Token required!"
+if [ -z "$BOT_TOKEN" ]; then fail "Token required!"; fi
 echo "$BOT_TOKEN" | grep -qE '^[0-9]+:[A-Za-z0-9_-]+$' || fail "Invalid token format!"
 ok "Token accepted"
 
-ARCH=$(uname -m)
-info "Architecture: $ARCH"
-
 echo "-- Step 1: System packages --"
-pkg update -y && pkg upgrade -y
-pkg install -y python ffmpeg git curl clang make cmake tar gzip sqlite libandroid-spawn || fail "pkg install failed"
-ok "Packages installed"
+pkg update -y; pkg upgrade -y
+# ДОБАВЛЕН proot-distro ДЛЯ ЗАПУСКА LINUX-БИНАРНИКОВ
+pkg install -y ca-certificates python ffmpeg git curl clang make cmake tar gzip sqlite proot-distro || fail "pkg install failed"
 
-echo "-- Step 2: Whisper Setup --"
+echo "-- Step 2: Whisper STT (Native Bionic) --"
 mkdir -p "$PROJECT_DIR" && cd "$PROJECT_DIR"
 
 if [ ! -f "whisper.cpp/build/bin/whisper-cli" ]; then
-    rm -rf whisper.cpp
     git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git || fail "Git clone failed"
     cd whisper.cpp && mkdir -p build && cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release || fail "CMake failed"
-    cmake --build . --config Release -j$(nproc 2>/dev/null || echo 2) || fail "Build failed"
+    cmake .. -DCMAKE_BUILD_TYPE=Release || fail "CMake config failed"
+    cmake --build . --config Release -j"$(nproc 2>/dev/null || echo 2)" || fail "CMake build failed"
     cd "$PROJECT_DIR"
 fi
 
 if [ ! -f "whisper.cpp/models/ggml-base.bin" ]; then
-    info "Downloading Whisper model..."
-    mkdir -p whisper.cpp/models
-    curl -sSfL --retry 3 "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" \
-        -o "whisper.cpp/models/ggml-base.bin" || fail "Model download failed"
+    echo "Downloading Whisper model (~142 MB)..."
+    curl -sSfL "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" -o "whisper.cpp/models/ggml-base.bin" || fail "Whisper model download failed"
 fi
-ok "Whisper ready"
 
-echo "-- Step 3: Piper Setup (FIXED) --"
+echo "-- Step 3: Ubuntu Subsystem (Glibc Fix for Piper) --"
+if [ ! -d "$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu" ]; then
+    echo "Installing lightweight Ubuntu container..."
+    proot-distro install ubuntu || fail "Ubuntu install failed"
+fi
+echo "Configuring Ubuntu libs for AI runtime..."
+proot-distro login ubuntu -- bash -c "apt-get update && apt-get install -y libgomp1 libatomic1" || warn "Apt install warnings"
+
+echo "-- Step 4: Piper TTS (3 Premium Models) --"
 cd "$PROJECT_DIR"
 mkdir -p piper/models
+mkdir -p tmp
 
 if [ ! -f "piper/piper" ]; then
-    info "Downloading Piper..."
-    
-    # Прямые ссылки на рабочие версии
-    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-        URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz"
-    elif [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "arm" ]; then
-        URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_armv7l.tar.gz"
-    else
-        fail "Unsupported arch: $ARCH"
-    fi
-    
-    # Скачивание с проверкой
-    curl -fL --retry 3 "$URL" -o piper.tar.gz 2>&1 | tee /tmp/curl.log || {
-        cat /tmp/curl.log
-        fail "Download failed from $URL"
-    }
-    
-    # Проверка что скачалось
-    if [ ! -s piper.tar.gz ]; then
-        fail "Downloaded file is empty"
-    fi
-    
-    # Распаковка
-    tar -xzf piper.tar.gz || fail "Extract failed"
+    echo "Downloading Piper engine (ARM64)..."
+    curl -sSfL "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz" -o piper.tar.gz || fail "Piper download failed"
+    tar -xf piper.tar.gz || fail "Piper extraction failed"
     rm -f piper.tar.gz
-    
-    # Структура может быть разной - ищем бинарник
-    if [ -f "piper" ]; then
-        mkdir -p piper_bin && mv piper piper_bin/ 2>/dev/null || true
-        mv piper_bin piper
-    fi
-    
-    chmod +x piper/piper 2>/dev/null || chmod +x piper 2>/dev/null || true
-    ok "Piper installed"
-else
-    ok "Piper exists"
 fi
 
-# Скачивание голосов
-cd "$PROJECT_DIR"
 BASE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main"
-MODELS="ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx en/en_US/lessac/medium/en_US-lessac-medium.onnx es/es_ES/davefx/medium/es_ES-davefx-medium.onnx"
+MODELS=(
+    "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
+    "en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+    "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx"
+)
 
-for model in $MODELS; do
-    fname=$(basename "$model")
-    if [ ! -f "piper/models/$fname" ]; then
-        info "Downloading $fname..."
-        curl -sSfL --retry 3 "$BASE_URL/$model" -o "piper/models/$fname" || warn "Failed: $fname"
-        curl -sSfL --retry 3 "$BASE_URL/$model.json" -o "piper/models/$fname.json" || warn "Failed: $fname.json"
+for model_path in "${MODELS[@]}"; do
+    FILE_NAME=$(basename "$model_path")
+    if [ ! -f "piper/models/$FILE_NAME" ]; then
+        echo "Downloading voice model: $FILE_NAME ..."
+        curl -sSfL "$BASE_URL/$model_path" -o "piper/models/$FILE_NAME" || fail "Failed to download $FILE_NAME"
+        curl -sSfL "$BASE_URL/${model_path}.json" -o "piper/models/${FILE_NAME}.json" || fail "Failed to download JSON"
     fi
 done
+ok "Piper TTS ready"
 
-# Тест Piper
-info "Testing Piper..."
-echo "test" > /tmp/test.txt
-./piper/piper --model ./piper/models/ru_RU-irina-medium.onnx --file /tmp/test.txt --output_file /tmp/test.wav 2>&1 || warn "Piper test failed"
-rm -f /tmp/test.txt /tmp/test.wav
-
-ok "Piper ready"
-
-echo "-- Step 4: Python --"
+echo "-- Step 5: Python Setup --"
 cd "$PROJECT_DIR"
-rm -rf venv
-python -m venv venv || fail "venv failed"
+rm -rf venv; python -m venv venv || fail "Venv failed"
 source venv/bin/activate
 pip install --upgrade pip
-pip install aiogram==3.4.1 aiohttp num2words || fail "pip failed"
+pip install aiogram aiohttp num2words || fail "pip install failed"
 deactivate
-ok "Python ready"
 
-echo "-- Step 5: Files --"
-cd "$PROJECT_DIR"
+echo "-- Step 6: Finalizing --"
+echo "Downloading main.py from repository..."
+curl -sSfL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py || fail "Failed to download main.py"
 
-# Скачиваем main.py или создаем
-if curl -sSfL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py 2>/dev/null; then
-    ok "Downloaded main.py"
-else
-    warn "Could not download main.py, create manually"
-fi
-
-# .env
-cat > .env << EOF
+cat > .env << ENVEOF
 export TELEGRAM_BOT_TOKEN="$BOT_TOKEN"
 export WHISPER_BIN="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
 export WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
 export PIPER_BIN="$PROJECT_DIR/piper/piper"
 export MODELS_DIR="$PROJECT_DIR/piper/models"
-export TEMP_DIR="/tmp/voice-bot"
-EOF
-
+ENVEOF
 chmod 600 .env
 
-# Start script
-cat > start_bot.sh << 'EOF'
+cat > start_bot.sh << 'STARTEOF'
 #!/bin/bash
 cd ~/voice-bot
-pkill -f main.py 2>/dev/null || true
-sleep 1
+pkill -f "main\.py" 2>/dev/null || true
 source .env
 source venv/bin/activate
-mkdir -p "$TEMP_DIR"
-python main.py 2>&1 | tee -a bot.log
-EOF
+exec python main.py
+STARTEOF
 chmod +x start_bot.sh
 
-echo "=========================================="
-echo "  DONE! Run: ~/voice-bot/start_bot.sh"
-echo "=========================================="
+cat > stop_bot.sh << 'STOPEOF'
+#!/bin/bash
+pkill -f "main\.py" 2>/dev/null || true
+STOPEOF
+chmod +x stop_bot.sh
+
+if [ -f ~/.bashrc ]; then grep -v 'voice-bot' ~/.bashrc > ~/.bashrc.tmp && mv ~/.bashrc.tmp ~/.bashrc; fi
+cat >> ~/.bashrc << 'BASHEOF'
+if [ -f ~/voice-bot/start_bot.sh ] && ! pgrep -f "voice-bot.*main\.py" > /dev/null 2>&1; then
+    nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
+fi
+BASHEOF
+
+echo "INSTALLATION COMPLETE! Starting bot..."
+nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
