@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# Termux Voice AI Bot — Installer v7.0 (Ultimate Android Fix)
+# Termux Voice AI Bot — Installer v7.1 (Ultimate Android Fix)
 # STT: Whisper | TTS: Piper (RU, EN, ES) | 100% Offline
 # ============================================================
 
@@ -12,7 +12,7 @@ fail() { echo "[ERROR] $1"; exit 1; }
 warn() { echo "[WARN] $1"; }
 
 echo "=========================================="
-echo "  VOICE AI BOT v7.0 (Multi-Lang Premium)"
+echo "  VOICE AI BOT v7.1 (Multi-Lang Premium)"
 echo "  Architecture Fix: Android Bionic -> Glibc"
 echo "=========================================="
 
@@ -29,8 +29,8 @@ ok "Token accepted"
 
 echo "-- Step 1: System packages --"
 pkg update -y; pkg upgrade -y
-# ДОБАВЛЕН proot-distro ДЛЯ ЗАПУСКА LINUX-БИНАРНИКОВ
-pkg install -y ca-certificates python ffmpeg git curl clang make cmake tar gzip sqlite proot-distro || fail "pkg install failed"
+# ДОБАВЛЕН rust ДЛЯ КОМПИЛЯЦИИ БИБЛИОТЕК PYTHON (pydantic-core)
+pkg install -y ca-certificates python ffmpeg git curl clang make cmake tar gzip sqlite proot-distro rust || fail "pkg install failed"
 
 echo "-- Step 2: Whisper STT (Native Bionic) --"
 mkdir -p "$PROJECT_DIR" && cd "$PROJECT_DIR"
@@ -89,6 +89,8 @@ echo "-- Step 5: Python Setup --"
 cd "$PROJECT_DIR"
 rm -rf venv; python -m venv venv || fail "Venv failed"
 source venv/bin/activate
+# === ВОТ ЭТА ВАЖНАЯ СТРОЧКА ВЕРНУЛАСЬ НА МЕСТО ===
+export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
 pip install --upgrade pip
 pip install aiogram aiohttp num2words || fail "pip install failed"
 deactivate
