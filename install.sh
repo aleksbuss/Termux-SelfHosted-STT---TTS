@@ -104,6 +104,7 @@ rm -rf tmp_repo
 echo "-- Step 6: Python Setup --"
 cd "$PROJECT_DIR" || exit 1
 rm -rf venv; python -m venv venv || fail "Venv failed"
+# shellcheck disable=SC1091
 source venv/bin/activate
 # === ВОТ ЭТА ВАЖНАЯ СТРОЧКА ВЕРНУЛАСЬ НА МЕСТО ===
 ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
