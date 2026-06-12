@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import asyncio
 import uuid
@@ -92,3 +93,4 @@ def cleanup_processes():
     for proc in list(active_processes):
         try: proc.kill()
         except: pass
+    active_processes.clear()

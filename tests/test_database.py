@@ -1,24 +1,22 @@
 import pytest
 import pytest_asyncio
 import os
+import tempfile
 import aiosqlite
 from src.database import init_db, get_user_lang, set_user_lang
-import src.config
-
-# Override DB path for tests
-TEST_DB = "test_users.db"
-src.config.DB_PATH = TEST_DB
+import src.database
 
 @pytest_asyncio.fixture(autouse=True)
 async def db_setup_teardown():
-    # Setup
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    src.database.DB_PATH = path
+    
     await init_db()
     yield
-    # Teardown
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
+    
+    if os.path.exists(path):
+        os.remove(path)
 
 @pytest.mark.asyncio
 async def test_get_user_lang_default():
