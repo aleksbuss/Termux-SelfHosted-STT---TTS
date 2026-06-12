@@ -7,7 +7,9 @@ STT: Whisper | TTS: Piper via proot-distro
 import asyncio
 import logging
 import sys
-from src.bot import dp, bot
+from aiogram import Bot
+from src.bot import dp
+from src.config import BOT_TOKEN
 from src.database import init_db
 from src.ai_engines import cleanup_processes
 
@@ -15,10 +17,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("main")
 
 async def main():
-    if not bot.token:
+    if not BOT_TOKEN:
         log.error("TELEGRAM_BOT_TOKEN environment variable not set. Exiting.")
         sys.exit(1)
         
+    bot = Bot(token=BOT_TOKEN)
     await init_db()
     
     try:

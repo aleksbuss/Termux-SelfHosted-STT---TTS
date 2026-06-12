@@ -10,7 +10,6 @@ from src.ai_engines import stt, tts
 
 log = logging.getLogger(__name__)
 
-bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 def get_lang_keyboard():
@@ -57,8 +56,8 @@ async def handle_voice(msg: types.Message):
 
     try:
         file_id = msg.voice.file_id if msg.voice else msg.audio.file_id
-        tg_file = await bot.get_file(file_id)
-        await bot.download_file(tg_file.file_path, ogg_path)
+        tg_file = await msg.bot.get_file(file_id)
+        await msg.bot.download_file(tg_file.file_path, ogg_path)
 
         text = await stt(ogg_path, lang)
         
