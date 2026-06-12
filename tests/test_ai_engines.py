@@ -49,17 +49,30 @@ async def test_stt_whisper_fails():
         assert result is None
 
 @pytest.mark.asyncio
-async def test_stt_brackets():
+async def test_stt_annotations_only():
     with patch('src.ai_engines.run_proc') as mock_run_proc, \
          patch('os.path.exists', return_value=True), \
          patch('os.remove'):
         mock_run_proc.side_effect = [
             (0, b"", b""), # ffmpeg
-            (0, b"(music playing)", b"") # whisper hallucination
+            (0, b"(music playing) [BLANK_AUDIO]", b"") # whisper hallucination
         ]
-        
+
         result = await stt("dummy.ogg", "en")
         assert result is None
+
+@pytest.mark.asyncio
+async def test_stt_annotations_mixed_with_speech():
+    with patch('src.ai_engines.run_proc') as mock_run_proc, \
+         patch('os.path.exists', return_value=True), \
+         patch('os.remove'):
+        mock_run_proc.side_effect = [
+            (0, b"", b""), # ffmpeg
+            (0, b"[Music] Hello there (laughs) how are you", b"")
+        ]
+
+        result = await stt("dummy.ogg", "en")
+        assert result == "Hello there how are you"
 
 @pytest.mark.asyncio
 async def test_tts_success():

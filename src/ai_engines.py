@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import re
 import asyncio
 import uuid
 import logging
@@ -11,6 +12,10 @@ log = logging.getLogger(__name__)
 whisper_lock = asyncio.Semaphore(1)
 piper_lock = asyncio.Semaphore(1)
 active_processes = set()
+
+# Whisper marks non-speech segments with bracketed/parenthesized annotations,
+# e.g. [BLANK_AUDIO], [Music], (music playing). Strip them but keep real speech.
+WHISPER_ANNOTATION_RE = re.compile(r"\[[^\]]*\]|\([^)]*\)")
 
 async def run_proc(*args, timeout=TIMEOUT_SEC, stdin_data=None):
     proc = None
@@ -59,10 +64,10 @@ async def stt(ogg_path: str, lang: str) -> str | None:
         
         if rc != 0: return None
         
-        text = out.decode("utf-8", errors="ignore").strip()
-        if not text or "[" in text or "(" in text: 
-            return None
-        return text
+        text = out.decode("utf-8", errors="ignore")
+        text = WHISPER_ANNOTATION_RE.sub("", text)
+        text = re.sub(r"\s{2,}", " ", text).strip()
+        return text or None
     finally:
         if os.path.exists(wav_path): os.remove(wav_path)
 
