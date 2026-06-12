@@ -12,6 +12,7 @@ from src.bot import dp
 from src.config import BOT_TOKEN
 from src.database import init_db
 from src.ai_engines import cleanup_processes
+from src.diagnostics import run_diagnostics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("main")
@@ -25,6 +26,7 @@ async def main():
     await init_db()
     
     try:
+        run_diagnostics()
         log.info("Starting Voice AI Bot...")
         await dp.start_polling(bot, handle_signals=False)
     finally:

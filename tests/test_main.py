@@ -19,7 +19,7 @@ async def test_main_no_token():
 @pytest.mark.asyncio
 async def test_main_success():
     with patch('main.BOT_TOKEN', '123:test'), \
-         patch('main.init_db', new_callable=AsyncMock) as mock_init_db, \
+         patch("main.init_db", new_callable=AsyncMock) as mock_init_db, patch("main.run_diagnostics") as mock_diag, \
          patch('main.dp.start_polling', new_callable=AsyncMock) as mock_start_polling, \
          patch('main.cleanup_processes') as mock_cleanup, \
          patch('main.Bot') as MockBot:
@@ -39,6 +39,7 @@ async def test_main_success():
 async def test_main_start_polling_exception():
     with patch('main.BOT_TOKEN', '123:test'), \
          patch('main.init_db', new_callable=AsyncMock), \
+         patch('main.run_diagnostics'), \
          patch('main.dp.start_polling', side_effect=Exception("Polling failed")), \
          patch('main.cleanup_processes') as mock_cleanup, \
          patch('main.Bot') as MockBot:

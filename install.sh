@@ -4,7 +4,7 @@
 # STT: Whisper | TTS: Piper (RU, EN, ES) | 100% Offline
 # ============================================================
 
-cd "$HOME" 2>/dev/null || cd /data/data/com.termux/files/home
+cd "$HOME" 2>/dev/null || cd /data/data/com.termux/files/home || exit 1
 PROJECT_DIR="$HOME/voice-bot"
 
 ok()   { echo "[OK] $1"; }
@@ -21,7 +21,7 @@ sleep 1
 
 # Чтение токена
 echo -n "Telegram bot token (from @BotFather): "
-read BOT_TOKEN < /dev/tty 2>/dev/null || read BOT_TOKEN
+read -r BOT_TOKEN < /dev/tty 2>/dev/null || read -r BOT_TOKEN
 
 if [ -z "$BOT_TOKEN" ]; then fail "Token required!"; fi
 echo "$BOT_TOKEN" | grep -qE '^[0-9]+:[A-Za-z0-9_-]+$' || fail "Invalid token format!"
@@ -33,14 +33,14 @@ pkg update -y; pkg upgrade -y
 pkg install -y ca-certificates python ffmpeg git curl clang make cmake tar gzip sqlite proot-distro rust || fail "pkg install failed"
 
 echo "-- Step 2: Whisper STT (Native Bionic) --"
-mkdir -p "$PROJECT_DIR" && cd "$PROJECT_DIR"
+mkdir -p "$PROJECT_DIR" && cd "$PROJECT_DIR" || exit 1
 
 if [ ! -f "whisper.cpp/build/bin/whisper-cli" ]; then
     git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git || fail "Git clone failed"
-    cd whisper.cpp && mkdir -p build && cd build
+    cd whisper.cpp && mkdir -p build && cd build || exit 1
     cmake .. -DCMAKE_BUILD_TYPE=Release || fail "CMake config failed"
     cmake --build . --config Release -j"$(nproc 2>/dev/null || echo 2)" || fail "CMake build failed"
-    cd "$PROJECT_DIR"
+    cd "$PROJECT_DIR" || exit 1
 fi
 
 if [ ! -f "whisper.cpp/models/ggml-base.bin" ]; then
@@ -57,7 +57,7 @@ echo "Configuring Ubuntu libs for AI runtime..."
 proot-distro login ubuntu -- bash -c "apt-get update && apt-get install -y libgomp1 libatomic1" || warn "Apt install warnings"
 
 echo "-- Step 4: Piper TTS (3 Premium Models) --"
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR" || exit 1
 mkdir -p piper/models
 mkdir -p tmp
 
@@ -86,7 +86,7 @@ done
 ok "Piper TTS ready"
 
 echo "-- Step 5: Fetch Bot Repository --"
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR" || exit 1
 echo "Downloading bot repository..."
 git clone https://github.com/aleksbuss/Termux-SelfHosted-STT---TTS.git tmp_repo || fail "Git clone bot failed"
 cp -r tmp_repo/* .
@@ -94,11 +94,12 @@ cp tmp_repo/.gitignore . 2>/dev/null || true
 rm -rf tmp_repo
 
 echo "-- Step 6: Python Setup --"
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR" || exit 1
 rm -rf venv; python -m venv venv || fail "Venv failed"
 source venv/bin/activate
 # === ВОТ ЭТА ВАЖНАЯ СТРОЧКА ВЕРНУЛАСЬ НА МЕСТО ===
-export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
+ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
+export ANDROID_API_LEVEL
 pip install --upgrade pip
 pip install -r requirements.txt || fail "pip install failed"
 deactivate
