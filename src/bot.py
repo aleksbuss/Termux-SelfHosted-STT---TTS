@@ -50,10 +50,14 @@ async def cmd_start(msg: types.Message):
         "🌐 Change language: /lang"
     )
 
-@dp.message(F.voice | F.audio)
+@dp.message(F.voice | F.audio | F.video_note)
 async def handle_voice(msg: types.Message):
-    if (msg.voice and msg.voice.duration > MAX_VOICE_DURATION) or (msg.audio and msg.audio.duration > MAX_VOICE_DURATION):
-        return await msg.reply("Audio is too long.")
+    if msg.voice: media = msg.voice
+    elif msg.audio: media = msg.audio
+    else: media = msg.video_note
+
+    if media.duration > MAX_VOICE_DURATION:
+        return await msg.reply("Audio/Video is too long.")
 
     lang = await get_user_lang(msg.from_user.id)
     status = await msg.answer("⏳ Processing...")
@@ -62,8 +66,7 @@ async def handle_voice(msg: types.Message):
     ogg_path = os.path.join(TEMP_DIR, f"{uid}_in.ogg")
 
     try:
-        file_id = msg.voice.file_id if msg.voice else msg.audio.file_id
-        tg_file = await msg.bot.get_file(file_id)
+        tg_file = await msg.bot.get_file(media.file_id)
         await msg.bot.download_file(tg_file.file_path, ogg_path)
 
         text = await stt(ogg_path, lang)

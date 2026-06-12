@@ -105,7 +105,7 @@ async def test_handle_voice_too_long():
     voice.duration = 9999
     msg = create_mock_message(voice=voice)
     await handle_voice(msg)
-    msg.reply.assert_called_with("Audio is too long.")
+    msg.reply.assert_called_with("Audio/Video is too long.")
 
 @pytest.mark.asyncio
 async def test_handle_text_too_long():
@@ -168,3 +168,28 @@ async def test_auth_middleware_authorized():
     with patch("src.bot.ALLOWED_USER_IDS", [12345]):
         await auth_middleware(handler, event, {})
         handler.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_handle_video_note():
+    from src.bot import handle_voice
+    msg = AsyncMock()
+    msg.voice = None
+    msg.audio = None
+    msg.video_note = MagicMock()
+    msg.video_note.duration = 10
+    msg.video_note.file_id = "video_123"
+    msg.from_user.id = 123
+    
+    status_mock = AsyncMock()
+    msg.answer.return_value = status_mock
+    
+    tg_file = MagicMock()
+    tg_file.file_path = "path"
+    msg.bot.get_file.return_value = tg_file
+    
+    with patch("src.bot.get_user_lang", return_value="en"), \
+         patch("src.bot.stt", return_value="Video text"), \
+         patch("os.path.exists", return_value=True), \
+         patch("os.remove"):
+        await handle_voice(msg)
+        status_mock.edit_text.assert_called_with("Video text")
