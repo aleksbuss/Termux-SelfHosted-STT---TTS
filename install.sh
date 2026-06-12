@@ -27,6 +27,14 @@ if [ -z "$BOT_TOKEN" ]; then fail "Token required!"; fi
 echo "$BOT_TOKEN" | grep -qE '^[0-9]+:[A-Za-z0-9_-]+$' || fail "Invalid token format!"
 ok "Token accepted"
 
+echo -n "Your Telegram User ID (optional, for security): "
+read -r ALLOWED_USER_ID < /dev/tty 2>/dev/null || read -r ALLOWED_USER_ID
+if [ -n "$ALLOWED_USER_ID" ]; then
+    ok "Whitelist activated for ID: $ALLOWED_USER_ID"
+else
+    warn "No User ID provided. Bot will be public (Not recommended!)."
+fi
+
 echo "-- Step 1: System packages --"
 pkg update -y; pkg upgrade -y
 # ДОБАВЛЕН rust ДЛЯ КОМПИЛЯЦИИ БИБЛИОТЕК PYTHON (pydantic-core)
@@ -108,6 +116,7 @@ echo "-- Step 7: Finalizing --"
 
 cat > .env << ENVEOF
 export TELEGRAM_BOT_TOKEN="$BOT_TOKEN"
+export ALLOWED_USER_IDS="$ALLOWED_USER_ID"
 export WHISPER_BIN="$PROJECT_DIR/whisper.cpp/build/bin/whisper-cli"
 export WHISPER_MODEL="$PROJECT_DIR/whisper.cpp/models/ggml-base.bin"
 export PIPER_BIN="$PROJECT_DIR/piper/piper"
