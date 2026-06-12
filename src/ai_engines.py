@@ -29,6 +29,12 @@ async def run_proc(*args, timeout=TIMEOUT_SEC, stdin_data=None):
             try: proc.kill()
             except: pass
         raise
+    except asyncio.TimeoutError:
+        if proc:
+            try: proc.kill()
+            except: pass
+        log.error(f"Process timeout")
+        return -1, b"", b"Timeout"
     except Exception as e:
         if proc:
             try: proc.kill()

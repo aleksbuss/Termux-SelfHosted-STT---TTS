@@ -176,3 +176,14 @@ async def test_run_proc_exception_kill_fails():
         mock_exec.return_value = proc_mock
         rc, out, err = await src.ai_engines.run_proc("ls")
         assert rc == -1
+
+@pytest.mark.asyncio
+async def test_run_proc_timeout():
+    with patch("asyncio.create_subprocess_exec") as mock_exec, patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+        proc_mock = AsyncMock()
+        proc_mock.returncode = None
+        mock_exec.return_value = proc_mock
+        rc, out, err = await src.ai_engines.run_proc("ls")
+        assert rc == -1
+        assert b"Timeout" in err
+        proc_mock.kill.assert_called_once()

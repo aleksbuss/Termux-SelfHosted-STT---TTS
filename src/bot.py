@@ -4,13 +4,20 @@ import logging
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
-from src.config import BOT_TOKEN, MAX_VOICE_DURATION, MAX_TTS_CHARS, TEMP_DIR, LANG_CONFIG
+from src.config import BOT_TOKEN, MAX_VOICE_DURATION, MAX_TTS_CHARS, TEMP_DIR, LANG_CONFIG, ALLOWED_USER_IDS
 from src.database import get_user_lang, set_user_lang
 from src.ai_engines import stt, tts
 
 log = logging.getLogger(__name__)
 
 dp = Dispatcher()
+
+@dp.message.outer_middleware()
+async def auth_middleware(handler, event, data):
+    user_id = event.from_user.id
+    if ALLOWED_USER_IDS and user_id not in ALLOWED_USER_IDS:
+        return # Ignore unauthorized users completely
+    return await handler(event, data)
 
 def get_lang_keyboard():
     buttons = [

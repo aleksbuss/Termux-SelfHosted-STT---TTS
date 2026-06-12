@@ -1,6 +1,11 @@
 import os
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+# Security: Comma-separated list of Telegram user IDs allowed to use the bot
+_allowed_users_str = os.getenv("ALLOWED_USER_IDS", "")
+ALLOWED_USER_IDS = [int(x.strip()) for x in _allowed_users_str.split(",") if x.strip().isdigit()]
+
 WHISPER_BIN = os.environ.get("WHISPER_BIN", os.path.expanduser("~/voice-bot/whisper.cpp/build/bin/whisper-cli"))
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", os.path.expanduser("~/voice-bot/whisper.cpp/models/ggml-base.bin"))
 PIPER_BIN = os.environ.get("PIPER_BIN", os.path.expanduser("~/voice-bot/piper/piper"))

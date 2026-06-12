@@ -145,3 +145,26 @@ async def test_handle_voice_none():
     with patch("src.bot.get_user_lang", return_value="en"), patch("src.bot.stt", return_value=None), patch("src.bot.os.path.exists", return_value=True), patch("src.bot.os.remove"):
         await handle_voice(msg)
         status_msg.edit_text.assert_called_with("❌ Speech not recognized.")
+
+@pytest.mark.asyncio
+async def test_auth_middleware_unauthorized():
+    from src.bot import auth_middleware
+    handler = AsyncMock()
+    event = MagicMock()
+    event.from_user.id = 999999999
+    
+    with patch("src.bot.ALLOWED_USER_IDS", [12345]):
+        result = await auth_middleware(handler, event, {})
+        assert result is None
+        handler.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_auth_middleware_authorized():
+    from src.bot import auth_middleware
+    handler = AsyncMock()
+    event = MagicMock()
+    event.from_user.id = 12345
+    
+    with patch("src.bot.ALLOWED_USER_IDS", [12345]):
+        await auth_middleware(handler, event, {})
+        handler.assert_called_once()
