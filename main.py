@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Voice AI Bot v7.1 (Modular Edition)
-STT: Whisper | TTS: Piper via proot-distro
+Voice AI Bot
+STT: whisper.cpp | TTS: Piper via proot-distro
 """
 
 import asyncio

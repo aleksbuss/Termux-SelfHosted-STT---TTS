@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
-# Termux Voice AI Bot — Installer v7.1 (Ultimate Android Fix)
-# STT: Whisper | TTS: Piper (RU, EN, ES) | 100% Offline
+# Termux Voice Bot — Installer
+# STT: whisper.cpp | TTS: Piper (RU, EN, ES) | fully offline
 # ============================================================
 
 cd "$HOME" 2>/dev/null || cd /data/data/com.termux/files/home || exit 1
@@ -12,14 +12,13 @@ fail() { echo "[ERROR] $1"; exit 1; }
 warn() { echo "[WARN] $1"; }
 
 echo "=========================================="
-echo "  VOICE AI BOT v7.1 (Multi-Lang Premium)"
-echo "  Architecture Fix: Android Bionic -> Glibc"
+echo "  Termux Voice Bot installer"
+echo "  STT: whisper.cpp | TTS: Piper (proot)"
 echo "=========================================="
 
 pkill -f "main\.py" 2>/dev/null || true
 sleep 1
 
-# Чтение токена
 echo -n "Telegram bot token (from @BotFather): "
 read -r BOT_TOKEN < /dev/tty 2>/dev/null || read -r BOT_TOKEN
 
@@ -37,7 +36,7 @@ fi
 
 echo "-- Step 1: System packages --"
 pkg update -y; pkg upgrade -y
-# ДОБАВЛЕН rust ДЛЯ КОМПИЛЯЦИИ БИБЛИОТЕК PYTHON (pydantic-core)
+# rust is needed to build pydantic-core (aiogram dependency) on Termux
 pkg install -y ca-certificates python ffmpeg git curl clang make cmake tar gzip sqlite proot-distro rust || fail "pkg install failed"
 
 echo "-- Step 2: Whisper STT (Native Bionic) --"
@@ -64,7 +63,7 @@ fi
 echo "Configuring Ubuntu libs for AI runtime..."
 proot-distro login ubuntu -- bash -c "apt-get update && apt-get install -y libgomp1 libatomic1" || warn "Apt install warnings"
 
-echo "-- Step 4: Piper TTS (3 Premium Models) --"
+echo "-- Step 4: Piper TTS (RU, EN, ES voice models) --"
 cd "$PROJECT_DIR" || exit 1
 mkdir -p piper/models
 mkdir -p tmp
@@ -106,7 +105,7 @@ cd "$PROJECT_DIR" || exit 1
 rm -rf venv; python -m venv venv || fail "Venv failed"
 # shellcheck disable=SC1091
 source venv/bin/activate
-# === ВОТ ЭТА ВАЖНАЯ СТРОЧКА ВЕРНУЛАСЬ НА МЕСТО ===
+# pydantic-core's build script needs the Android API level to pick the right target
 ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
 export ANDROID_API_LEVEL
 pip install --upgrade pip

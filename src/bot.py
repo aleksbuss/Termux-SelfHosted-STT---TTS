@@ -44,7 +44,7 @@ async def process_lang_selection(callback: types.CallbackQuery):
 @dp.message(Command("start", "help"))
 async def cmd_start(msg: types.Message):
     await msg.answer(
-        "🎙 Voice AI Bot (Enterprise Local)\n\n"
+        "🎙 Voice AI Bot\n\n"
         "Send Voice -> Get Text\n"
         "Send Text -> Get Voice\n\n"
         "🌐 Change language: /lang"
