@@ -7,8 +7,9 @@ A pocket-sized AI server running on your Android smartphone. This project turns 
 ## ✨ Features
 
 - 🎙️ **Speech-to-Text (STT):** Send a voice message and the bot transcribes it with high accuracy using `whisper.cpp`.
-- 🔊 **Text-to-Speech (TTS):** Send text and the bot reads it aloud with a natural-sounding neural voice using `espeak-ng`.
+- 🔊 **Text-to-Speech (TTS):** Send text and the bot reads it aloud with a natural-sounding **neural voice** using `Piper TTS`.
 - 🌍 **Multi-language support:** Works with **Russian**, **English**, and **Spanish** for both STT and TTS.
+- 🛡️ **Zero-Trust Security:** Built-in whitelist (`ALLOWED_USER_IDS`) ensures only you can interact with the bot.
 - 🔒 **Full privacy:** Not a single byte of your data leaves the device. Zero cloud dependencies.
 - ⚡ **One-liner install:** A single `curl` command downloads packages, compiles engines, downloads models, and configures autostart.
 - 🔄 **Auto-start:** The bot launches automatically in the background when you open Termux.
@@ -65,12 +66,12 @@ The script will:
 3. Install system dependencies (`python`, `ffmpeg`, `git`, `cmake`, `clang`, `espeak`).
 4. Clone and compile `whisper.cpp` from source (~2–5 minutes on most devices).
 5. Download the Whisper `base` model (~150 MB).
-6. Install `espeak-ng` for text-to-speech.
-7. Install Python dependencies (`aiogram`, `aiohttp`).
-8. Download the bot logic (`main.py`).
-9. Create the `.env` configuration file.
+6. Download `Piper TTS` and its neural voice models (`.onnx`).
+7. Install Python dependencies (`aiogram`, `aiohttp`, `aiosqlite`).
+8. Download the bot logic.
+9. Create the `.env` configuration file and ask for your Telegram User ID for the security whitelist.
 10. Set up auto-start scripts.
-11. Launch the bot.
+11. Run diagnostics (Smoke tests) to ensure all models are valid, then launch the bot.
 
 > ⏱ **Total installation time:** approximately 5–15 minutes depending on your device and internet speed.
 
@@ -94,11 +95,11 @@ The script will:
 
 The bot supports multiple languages for recognition and synthesis:
 
-| Language | STT (Whisper) | TTS (espeak-ng) |
+| Language | STT (Whisper) | TTS (Piper Neural) |
 |---|---|---|
-| 🇷🇺 Russian | ✅ | ✅ |
-| 🇬🇧 English | ✅ | ✅ |
-| 🇪🇸 Spanish | ✅ | ✅ |
+| 🇷🇺 Russian | ✅ | ✅ (Irina Medium) |
+| 🇬🇧 English | ✅ | ✅ (Lessac Medium) |
+| 🇪🇸 Spanish | ✅ | ✅ (Davefx Medium) |
 
 Use the bot's inline commands or settings to switch between languages.
 
@@ -125,10 +126,22 @@ nano ~/voice-bot/.env
 | Variable | Description | Default |
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Your Telegram bot token from BotFather | *(set during install)* |
+| `ALLOWED_USER_IDS` | Comma-separated list of Telegram User IDs allowed to use the bot | *(set during install)* |
 | `WHISPER_BIN` | Path to the whisper-cli binary | `~/voice-bot/whisper.cpp/build/bin/whisper-cli` |
 | `WHISPER_MODEL` | Path to the Whisper GGML model file | `~/voice-bot/whisper.cpp/models/ggml-base.bin` |
-| `TTS_ENGINE` | TTS backend (`espeak`) | `espeak` |
-| `ESPEAK_VOICE` | Default espeak-ng voice/language | `ru` |
+| `PIPER_BIN` | Path to the Piper binary | `~/voice-bot/piper/piper` |
+| `MODELS_DIR` | Path to Piper models directory | `~/voice-bot/piper/models` |
+
+---
+
+## 🛡️ Architecture & Reliability
+
+This bot isn't just a script, it is engineered for strict reliability on constrained mobile environments:
+- **Concurrency Locks:** A global `Semaphore` limits heavy AI tasks to 1 thread, preventing your phone from freezing due to CPU overload.
+- **SQLite WAL Mode:** Database writes use `Write-Ahead Logging` to eliminate `Database is locked` errors during concurrent Telegram requests.
+- **Deadlock Protection:** If an AI engine hangs due to corrupted audio, an `asyncio.wait_for` timeout kills the stuck process to self-heal the pipeline.
+- **Ephemeral Files:** All temporary audio files use `uuid4()` to prevent race conditions when multiple voice messages arrive at the exact same time.
+- **Deep Diagnostics:** Validates file sizes (`>10MB`) and executable permissions before startup to ensure models were downloaded successfully.
 
 ---
 
@@ -168,17 +181,21 @@ The installer adds a line to `~/.bashrc` that starts the bot when you open Termu
 
 ```
 ~/voice-bot/
-├── main.py              # Bot logic (Telegram handlers, STT/TTS pipeline)
-├── .env                 # Configuration (bot token, model paths)
+├── src/                 # Bot source code modules
+│   ├── main.py          # Entrypoint
+│   ├── bot.py           # Telegram handlers & middleware
+│   ├── ai_engines.py    # Whisper/Piper subprocess logic
+│   ├── database.py      # SQLite WAL DB manager
+│   ├── diagnostics.py   # Boot validation
+│   ├── config.py        # Environment variables
+│   └── utils.py         # Formatting utilities
+├── tests/               # 100% Coverage Test Suite
+├── .env                 # Configuration (token, whitelist, paths)
 ├── start_bot.sh         # Start script
 ├── stop_bot.sh          # Stop script
 ├── bot.log              # Runtime logs
-└── whisper.cpp/         # Whisper STT engine (compiled from source)
-    ├── build/
-    │   └── bin/
-    │       └── whisper-cli   # Whisper binary
-    └── models/
-        └── ggml-base.bin     # Whisper base model (~150 MB)
+├── piper/               # Piper Neural TTS Engine
+└── whisper.cpp/         # Whisper STT engine
 ```
 
 ---
@@ -189,12 +206,12 @@ The bot operates as a pipeline of local AI engines:
 
 ```
 Voice message ──► ffmpeg (OGG → WAV) ──► whisper.cpp ──► Text reply
-Text message  ──► espeak-ng ──► WAV ──► ffmpeg (WAV → OGG) ──► Voice reply
+Text message  ──► Piper (proot-distro) ──► WAV ──► ffmpeg (WAV → OGG) ──► Voice reply
 ```
 
 1. **STT Pipeline:** When you send a voice message, the bot downloads the OGG file from Telegram, converts it to 16kHz mono WAV using `ffmpeg`, passes it to `whisper-cli` for transcription, and sends the text back.
 
-2. **TTS Pipeline:** When you send a text message, the bot passes it to `espeak-ng` which generates a WAV file, converts it to OGG format via `ffmpeg`, and sends it back as a Telegram voice message.
+2. **TTS Pipeline:** When you send a text message, the bot passes it to `Piper` (running inside a lightweight Ubuntu `proot-distro` container to satisfy Glibc requirements on Android) which synthesizes neural voice into a WAV file, converts it to OGG format via `ffmpeg`, and sends it back.
 
 All processing happens on-device. The only network traffic is the Telegram Bot API communication (receiving messages and sending replies).
 
@@ -241,14 +258,15 @@ ls -la ~/voice-bot/whisper.cpp/models/ggml-base.bin
 
 ### TTS doesn't produce audio
 
-**Check espeak-ng:**
+**Check Piper models:**
 ```bash
-espeak-ng "Hello world" -w /tmp/test.wav && echo "OK"
+ls -la ~/voice-bot/piper/models/
 ```
+You should see `.onnx` and `.onnx.json` files.
 
-If `espeak-ng` is not found:
+If `proot-distro` errors occur, ensure Ubuntu is installed:
 ```bash
-pkg install espeak
+proot-distro list
 ```
 
 ### "Cannot access parent directories" error
