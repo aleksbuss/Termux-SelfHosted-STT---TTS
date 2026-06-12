@@ -55,7 +55,7 @@ The Google Play version of Termux has been abandoned since 2020 and is missing c
 Open Termux on your Android device, paste this command and press Enter:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/aleksbuss/termux-voice-bot/main/install.sh | bash
 ```
 
 The script will:

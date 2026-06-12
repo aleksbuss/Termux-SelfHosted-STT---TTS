@@ -95,7 +95,7 @@ ok "Piper TTS ready"
 echo "-- Step 5: Fetch Bot Repository --"
 cd "$PROJECT_DIR" || exit 1
 echo "Downloading bot repository..."
-git clone https://github.com/aleksbuss/Termux-SelfHosted-STT---TTS.git tmp_repo || fail "Git clone bot failed"
+git clone https://github.com/aleksbuss/termux-voice-bot.git tmp_repo || fail "Git clone bot failed"
 cp -r tmp_repo/* .
 cp tmp_repo/.gitignore . 2>/dev/null || true
 rm -rf tmp_repo
