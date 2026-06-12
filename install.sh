@@ -16,7 +16,7 @@ echo "  Termux Voice Bot installer"
 echo "  STT: whisper.cpp | TTS: Piper (proot)"
 echo "=========================================="
 
-pkill -f "main\.py" 2>/dev/null || true
+pkill -f "voice-bot/main\.py" 2>/dev/null || true
 sleep 1
 
 echo -n "Telegram bot token (from @BotFather): "
@@ -124,28 +124,48 @@ export MODELS_DIR="$PROJECT_DIR/piper/models"
 ENVEOF
 chmod 600 .env
 
+# main.py is invoked by its full path so the process can be matched
+# (and killed) by the "voice-bot/main.py" pattern without touching
+# unrelated processes that also run a main.py.
 cat > start_bot.sh << 'STARTEOF'
 #!/bin/bash
-cd ~/voice-bot
-pkill -f "main\.py" 2>/dev/null || true
+cd ~/voice-bot || exit 1
+pkill -f "voice-bot/main\.py" 2>/dev/null || true
 source .env
 source venv/bin/activate
-exec python main.py
+exec python "$HOME/voice-bot/main.py"
 STARTEOF
 chmod +x start_bot.sh
 
 cat > stop_bot.sh << 'STOPEOF'
 #!/bin/bash
-pkill -f "main\.py" 2>/dev/null || true
+pkill -f "voice-bot/main\.py" 2>/dev/null || true
 STOPEOF
 chmod +x stop_bot.sh
 
-if [ -f ~/.bashrc ]; then grep -v 'voice-bot' ~/.bashrc > ~/.bashrc.tmp && mv ~/.bashrc.tmp ~/.bashrc; fi
+# Autostart on opening Termux: replace only our own marked block in
+# ~/.bashrc (plus the unmarked block from older installer versions).
+if [ -f ~/.bashrc ]; then
+    sed -i '/# >>> voice-bot autostart >>>/,/# <<< voice-bot autostart <<</d' ~/.bashrc
+    sed -i '/if \[ -f ~\/voice-bot\/start_bot\.sh \]/,/^fi$/d' ~/.bashrc
+fi
 cat >> ~/.bashrc << 'BASHEOF'
-if [ -f ~/voice-bot/start_bot.sh ] && ! pgrep -f "voice-bot.*main\.py" > /dev/null 2>&1; then
+# >>> voice-bot autostart >>>
+if [ -f ~/voice-bot/start_bot.sh ] && ! pgrep -f "voice-bot/main\.py" > /dev/null 2>&1; then
     nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
 fi
+# <<< voice-bot autostart <<<
 BASHEOF
 
+# Autostart on device boot (requires the Termux:Boot app from F-Droid).
+mkdir -p ~/.termux/boot
+cat > ~/.termux/boot/voice-bot.sh << 'BOOTEOF'
+#!/data/data/com.termux/files/usr/bin/bash
+termux-wake-lock 2>/dev/null || true
+nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
+BOOTEOF
+chmod +x ~/.termux/boot/voice-bot.sh
+
 echo "INSTALLATION COMPLETE! Starting bot..."
+echo "Tip: install the Termux:Boot app from F-Droid and the bot will also survive reboots."
 nohup ~/voice-bot/start_bot.sh > ~/voice-bot/bot.log 2>&1 &
