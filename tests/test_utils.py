@@ -32,3 +32,10 @@ def test_normalize_text():
     
     # Test invalid language fallback (if dictionary doesn't exist, it should raise or log, returning original number)
     # but since our LANG_CONFIG has en/ru/es, we only test those.
+
+from unittest.mock import patch
+def test_normalize_text_exceptions():
+    with patch("src.utils.num2words", side_effect=Exception("mocked error")):
+        assert normalize_text("123", "en") == "123"
+    with patch("src.utils.re.sub", side_effect=Exception("mocked error")):
+        assert normalize_text("123", "en") == "123"

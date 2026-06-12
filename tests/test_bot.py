@@ -96,3 +96,52 @@ async def test_process_lang_selection():
         mock_set_lang.assert_called_with(123, "es")
         cb.message.edit_text.assert_called_once()
         cb.answer.assert_called_once()
+
+from aiogram.types import Voice, Audio
+
+@pytest.mark.asyncio
+async def test_handle_voice_too_long():
+    voice = MagicMock(spec=Voice)
+    voice.duration = 9999
+    msg = create_mock_message(voice=voice)
+    await handle_voice(msg)
+    msg.reply.assert_called_with("Audio is too long.")
+
+@pytest.mark.asyncio
+async def test_handle_text_too_long():
+    msg = create_mock_message(text="A" * 9999)
+    await handle_text(msg)
+    msg.reply.assert_called_with("Text is too long.")
+
+@pytest.mark.asyncio
+async def test_handle_voice_exception():
+    voice = MagicMock(spec=Voice)
+    voice.duration = 10
+    msg = create_mock_message(voice=voice)
+    msg.bot.get_file.side_effect = Exception("Network error")
+    status_msg = AsyncMock()
+    msg.answer.return_value = status_msg
+    with patch("src.bot.get_user_lang", return_value="en"):
+        await handle_voice(msg)
+        status_msg.edit_text.assert_called_with("❌ Error processing audio.")
+
+@pytest.mark.asyncio
+async def test_handle_text_exception():
+    msg = create_mock_message(text="hello")
+    status_msg = AsyncMock()
+    msg.answer.return_value = status_msg
+    with patch("src.bot.get_user_lang", return_value="en"), patch("src.bot.tts", side_effect=Exception("TTS Error")):
+        await handle_text(msg)
+        status_msg.edit_text.assert_called_with("❌ Error processing text.")
+
+@pytest.mark.asyncio
+async def test_handle_voice_none():
+    voice = MagicMock(spec=Voice)
+    voice.duration = 10
+    voice.file_id = "123"
+    msg = create_mock_message(voice=voice)
+    status_msg = AsyncMock()
+    msg.answer.return_value = status_msg
+    with patch("src.bot.get_user_lang", return_value="en"), patch("src.bot.stt", return_value=None), patch("src.bot.os.path.exists", return_value=True), patch("src.bot.os.remove"):
+        await handle_voice(msg)
+        status_msg.edit_text.assert_called_with("❌ Speech not recognized.")
