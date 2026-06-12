@@ -156,3 +156,23 @@ def test_cleanup_processes_exception():
     cleanup_processes()
     # It should not throw, and should still clear the list
     assert len(active_processes) == 0
+
+@pytest.mark.asyncio
+async def test_run_proc_cancelled_kill_fails():
+    with patch("asyncio.create_subprocess_exec") as mock_exec:
+        proc_mock = AsyncMock()
+        proc_mock.communicate.side_effect = asyncio.CancelledError()
+        proc_mock.kill = MagicMock(side_effect=Exception("kill error"))
+        mock_exec.return_value = proc_mock
+        with pytest.raises(asyncio.CancelledError):
+            await src.ai_engines.run_proc("ls")
+
+@pytest.mark.asyncio
+async def test_run_proc_exception_kill_fails():
+    with patch("asyncio.create_subprocess_exec") as mock_exec:
+        proc_mock = AsyncMock()
+        proc_mock.communicate.side_effect = Exception("Random error")
+        proc_mock.kill = MagicMock(side_effect=Exception("kill error"))
+        mock_exec.return_value = proc_mock
+        rc, out, err = await src.ai_engines.run_proc("ls")
+        assert rc == -1

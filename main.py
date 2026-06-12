@@ -32,8 +32,8 @@ async def main():
         cleanup_processes()
         await bot.session.close()
 
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        log.info("Stopped by user.")
+        log.info("Bot stopped by user")
