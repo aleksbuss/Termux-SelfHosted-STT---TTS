@@ -85,19 +85,25 @@ for model_path in "${MODELS[@]}"; do
 done
 ok "Piper TTS ready"
 
-echo "-- Step 5: Python Setup --"
+echo "-- Step 5: Fetch Bot Repository --"
+cd "$PROJECT_DIR"
+echo "Downloading bot repository..."
+git clone https://github.com/aleksbuss/Termux-SelfHosted-STT---TTS.git tmp_repo || fail "Git clone bot failed"
+cp -r tmp_repo/* .
+cp tmp_repo/.gitignore . 2>/dev/null || true
+rm -rf tmp_repo
+
+echo "-- Step 6: Python Setup --"
 cd "$PROJECT_DIR"
 rm -rf venv; python -m venv venv || fail "Venv failed"
 source venv/bin/activate
 # === ВОТ ЭТА ВАЖНАЯ СТРОЧКА ВЕРНУЛАСЬ НА МЕСТО ===
 export ANDROID_API_LEVEL=$(getprop ro.build.version.sdk 2>/dev/null || echo 24)
 pip install --upgrade pip
-pip install aiogram aiohttp num2words || fail "pip install failed"
+pip install -r requirements.txt || fail "pip install failed"
 deactivate
 
-echo "-- Step 6: Finalizing --"
-echo "Downloading main.py from repository..."
-curl -sSfL "https://raw.githubusercontent.com/aleksbuss/Termux-SelfHosted-STT---TTS/main/main.py" -o main.py || fail "Failed to download main.py"
+echo "-- Step 7: Finalizing --"
 
 cat > .env << ENVEOF
 export TELEGRAM_BOT_TOKEN="$BOT_TOKEN"

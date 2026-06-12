@@ -1,0 +1,10 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+bot.log
+tmp/
+users.db
+whisper.cpp/
+piper/
