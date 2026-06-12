@@ -1,18 +1,17 @@
 # 📱 Termux Voice AI Bot
 
-A pocket-sized AI server running on your Android smartphone. This project turns your phone into a fully autonomous **Telegram bot** for voice and text processing. No cloud APIs, no paid subscriptions, no data leaks — everything runs **100% locally** on your device's CPU.
+Turn a spare Android phone into a personal **Telegram bot** for voice transcription and speech synthesis. No cloud APIs, no subscriptions — everything runs locally on the phone's CPU inside Termux. The only network traffic is the Telegram Bot API itself.
 
 ---
 
 ## ✨ Features
 
-- 🎙️ **Speech-to-Text (STT):** Send a voice message and the bot transcribes it with high accuracy using `whisper.cpp`.
-- 🔊 **Text-to-Speech (TTS):** Send text and the bot reads it aloud with a natural-sounding **neural voice** using `Piper TTS`.
-- 🌍 **Multi-language support:** Works with **Russian**, **English**, and **Spanish** for both STT and TTS.
-- 🛡️ **Zero-Trust Security:** Built-in whitelist (`ALLOWED_USER_IDS`) ensures only you can interact with the bot.
-- 🔒 **Full privacy:** Not a single byte of your data leaves the device. Zero cloud dependencies.
-- ⚡ **One-liner install:** A single `curl` command downloads packages, compiles engines, downloads models, and configures autostart.
-- 🔄 **Auto-start:** The bot launches automatically in the background when you open Termux.
+- 🎙️ **Speech-to-Text (STT):** Send (or forward) a voice message, audio file, or video note — the bot replies with the transcript, using `whisper.cpp`.
+- 🔊 **Text-to-Speech (TTS):** Send text and the bot replies with a spoken voice message, using `Piper`.
+- 🌍 **Multi-language:** Russian, English, and Spanish for both STT and TTS.
+- 🔒 **Single-user by design:** A user-ID whitelist (`ALLOWED_USER_IDS`) — messages from anyone else are silently ignored.
+- ⚡ **One-command install:** A single script installs packages, compiles whisper.cpp, downloads models, and configures autostart. Read `install.sh` before running it — it's short.
+- 🔄 **Auto-start:** Launches when you open Termux; with the [Termux:Boot](https://f-droid.org/en/packages/com.termux.boot/) app installed it also survives reboots.
 
 ---
 
@@ -136,12 +135,13 @@ nano ~/voice-bot/.env
 
 ## 🛡️ Architecture & Reliability
 
-This bot isn't just a script, it is engineered for strict reliability on constrained mobile environments:
-- **Concurrency Locks:** A global `Semaphore` limits heavy AI tasks to 1 thread, preventing your phone from freezing due to CPU overload.
-- **SQLite WAL Mode:** Database writes use `Write-Ahead Logging` to eliminate `Database is locked` errors during concurrent Telegram requests.
-- **Deadlock Protection:** If an AI engine hangs due to corrupted audio, an `asyncio.wait_for` timeout kills the stuck process to self-heal the pipeline.
-- **Ephemeral Files:** All temporary audio files use `uuid4()` to prevent race conditions when multiple voice messages arrive at the exact same time.
-- **Deep Diagnostics:** Validates file sizes (`>10MB`) and executable permissions before startup to ensure models were downloaded successfully.
+Phones are a constrained environment, so a few deliberate choices:
+
+- **One AI task at a time:** A `Semaphore` queues transcription/synthesis requests instead of running them in parallel — five forwarded voice notes wait their turn rather than throttling the SoC.
+- **Hung-process timeout:** If an engine hangs on corrupted audio, `asyncio.wait_for` kills the subprocess instead of blocking the pipeline forever.
+- **SQLite in WAL mode:** Avoids `database is locked` errors when reads and writes overlap.
+- **Unique temp filenames:** Per-request random names, cleaned up in `finally` blocks, so concurrent messages don't collide and storage doesn't fill with leftovers.
+- **Startup checks:** Verifies binaries are executable and models have plausible sizes before polling starts, so a broken install fails loudly instead of silently.
 
 ---
 
@@ -173,7 +173,9 @@ cat ~/voice-bot/bot.log
 
 ### Auto-start behavior
 
-The installer adds a line to `~/.bashrc` that starts the bot when you open Termux. To disable auto-start, edit `~/.bashrc` and remove or comment out the line containing `voice-bot/start_bot.sh`.
+The installer adds a marked block (between `# >>> voice-bot autostart >>>` and `# <<< voice-bot autostart <<<`) to `~/.bashrc` that starts the bot when you open Termux, and a boot script at `~/.termux/boot/voice-bot.sh` that starts it on device boot if the [Termux:Boot](https://f-droid.org/en/packages/com.termux.boot/) app is installed.
+
+To disable auto-start, delete the marked block from `~/.bashrc` and remove `~/.termux/boot/voice-bot.sh`.
 
 ---
 
@@ -181,21 +183,21 @@ The installer adds a line to `~/.bashrc` that starts the bot when you open Termu
 
 ```
 ~/voice-bot/
+├── main.py              # Entrypoint
 ├── src/                 # Bot source code modules
-│   ├── main.py          # Entrypoint
 │   ├── bot.py           # Telegram handlers & middleware
 │   ├── ai_engines.py    # Whisper/Piper subprocess logic
-│   ├── database.py      # SQLite WAL DB manager
-│   ├── diagnostics.py   # Boot validation
+│   ├── database.py      # SQLite DB manager (WAL mode)
+│   ├── diagnostics.py   # Startup validation
 │   ├── config.py        # Environment variables
-│   └── utils.py         # Formatting utilities
-├── tests/               # 100% Coverage Test Suite
+│   └── utils.py         # Text normalization utilities
+├── tests/               # Unit tests (pytest)
 ├── .env                 # Configuration (token, whitelist, paths)
 ├── start_bot.sh         # Start script
 ├── stop_bot.sh          # Stop script
 ├── bot.log              # Runtime logs
-├── piper/               # Piper Neural TTS Engine
-└── whisper.cpp/         # Whisper STT engine
+├── piper/               # Piper TTS engine + voice models
+└── whisper.cpp/         # whisper.cpp STT engine + model
 ```
 
 ---
@@ -228,13 +230,14 @@ echo $TELEGRAM_BOT_TOKEN
 ```
 Make sure the token is set and valid.
 
-**Check Python dependencies:**
+**Check Python dependencies** (the bot runs in its own venv):
 ```bash
+source ~/voice-bot/venv/bin/activate
 pip list | grep aiogram
 ```
 If missing, reinstall:
 ```bash
-pip install aiogram aiohttp --break-system-packages
+pip install -r ~/voice-bot/requirements.txt
 ```
 
 ### Whisper doesn't recognize speech
@@ -332,6 +335,3 @@ This project is licensed under the [MIT License](LICENSE).
 - [Termux](https://termux.dev/) — Android terminal emulator and Linux environment
 - [ffmpeg](https://ffmpeg.org/) — Universal media converter
 
----
-
-**Made with ❤️ for privacy enthusiasts and self-hosting nerds.**
